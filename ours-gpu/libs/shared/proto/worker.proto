@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package ours_gpu;
+
+service WorkerService {
+  rpc Register(WorkerInfo) returns (RegisterReply);
+  rpc Heartbeat(HeartbeatReq) returns (HeartbeatReply);
+  rpc PullJob(PullJobReq) returns (Job);          // worker 主動拉任務（簡單好做）
+  rpc ReportResult(JobResult) returns (ReportReply);
+}
+
+message WorkerInfo {
+  string id = 1;           // 由 worker 產生（uuid）
+  string orgId = 2;        // 組織（之後可從鏈上驗）
+  uint32 concurrency = 3;  // 可同時跑幾個 job
+}
+
+message RegisterReply { bool ok = 1; string note = 2; }
+message HeartbeatReq { string id = 1; uint32 running = 2; }
+message HeartbeatReply { bool ok = 1; }
+
+message PullJobReq { string id = 1; }
+message Job {
+  string jobId = 1;
+  string target = 2;     // 目前 MVP: hash target
+  uint32 difficulty = 3;
+}
+message JobResult {
+  string jobId = 1;
+  string workerId = 2;
+  string solution = 3;   // 找到的 nonce/hash 等
+  bool success = 4;
+}
+message ReportReply { bool ok = 1; }

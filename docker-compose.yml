@@ -1,0 +1,25 @@
+version: '3.9'
+services:
+  controller:
+    build: ./ours-gpu/apps/controller
+    ports:
+      - "3000:3000"   # REST for UI
+      - "50051:50051" # gRPC for workers
+    environment:
+      - NODE_ENV=production
+
+  worker1:
+    build: ./ours-gpu/apps/worker
+    environment:
+      - CONTROLLER_GRPC=controller:50051
+      - WORKER_ID=worker-1
+      - ORG_ID=org-1
+    depends_on: [controller]
+
+  worker2:
+    build: ./ours-gpu/apps/worker
+    environment:
+      - CONTROLLER_GRPC=controller:50051
+      - WORKER_ID=worker-2
+      - ORG_ID=org-1
+    depends_on: [controller]
