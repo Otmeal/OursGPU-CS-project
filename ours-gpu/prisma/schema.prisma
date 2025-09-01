@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  REQUESTED
+  SCHEDULED
+  PROCESSING
+  VERIFYING
+  DONE
+  FAILED
+}
+
+enum VerificationMethod {
+  BUILTIN_HASH
+  USER_PROGRAM
+}
+
+model Job {
+  id               String     @id @default(uuid()) @db.Uuid
+  orgId            String
+  jobType          String
+  status           JobStatus  @default(REQUESTED)
+  objectKey        String     // MinIO object key containing job payload/config
+  metadata         Json?
+  priority         Int        @default(0)
+  assignedWorkerId String?
+  // Command to start the computation in worker runtime (e.g., bash entrypoint)
+  entryCommand     String?
+  // How to verify results: built-in hash vs user-provided verifier program
+  verification     VerificationMethod @default(BUILTIN_HASH)
+  // If USER_PROGRAM: MinIO object key to the verifier program/assets
+  verifierObjectKey String?
+  // If USER_PROGRAM: command to execute verifier program
+  verifierCommand   String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model Worker {
+  id          String   @id @db.Uuid
+  orgId       String
+  concurrency Int
+  running     Int      @default(0)
+  lastSeen    DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

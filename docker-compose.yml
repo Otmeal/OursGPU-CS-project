@@ -1,0 +1,65 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: oursgpu
+      POSTGRES_USER: oursgpu
+      POSTGRES_PASSWORD: oursgpu
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  controller:
+    build: 
+      context: ./ours-gpu
+      dockerfile: ./apps/controller/Dockerfile
+    ports:
+      - "3000:3000"   # REST for UI
+      - "50051:50051" # gRPC for workers
+    environment:
+      - NODE_ENV=production
+      - CONTROLLER_GRPC=0.0.0.0:50051
+      - DATABASE_URL=postgresql://oursgpu:oursgpu@postgres:5432/oursgpu
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET_JOBS=jobs
+    depends_on: [postgres, minio]
+
+  worker1:
+    build:
+      context: ./ours-gpu
+      dockerfile: ./apps/worker/Dockerfile
+    environment:
+      - CONTROLLER_GRPC=controller:50051
+      - WORKER_ID=worker-1
+      - ORG_ID=org-1
+    depends_on: [controller]
+
+  worker2:
+    build:
+      context: ./ours-gpu
+      dockerfile: ./apps/worker/Dockerfile
+    environment:
+      - CONTROLLER_GRPC=controller:50051
+      - WORKER_ID=worker-2
+      - ORG_ID=org-1
+    depends_on: [controller]
+
+volumes:
+  pgdata:
+  minio_data:

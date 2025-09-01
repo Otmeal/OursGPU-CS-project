@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package ours_gpu;
+
+service WorkerService {
+  rpc Register(WorkerInfo) returns (RegisterReply);
+  rpc Heartbeat(HeartbeatReq) returns (HeartbeatReply);
+  rpc PullJob(PullJobReq) returns (Job);          // worker 主動拉任務（簡單好做）
+  rpc JobStream(SubscribeReq) returns (stream Job); // 推播：controller 主動指派
+  rpc ReportResult(JobResult) returns (ReportReply);
+  rpc PresignOutput(PresignOutputReq) returns (PresignOutputReply);
+}
+
+message WorkerInfo {
+  string id = 1;           // 由 worker 產生（uuid）
+  string orgId = 2;        // 組織（之後可從鏈上驗）
+  uint32 concurrency = 3;  // 可同時跑幾個 job
+}
+
+message RegisterReply { bool ok = 1; string note = 2; }
+message HeartbeatReq { string id = 1; uint32 running = 2; }
+message HeartbeatReply { bool ok = 1; }
+
+message PullJobReq { string id = 1; }
+message SubscribeReq { string id = 1; }
+
+enum VerificationMethod {
+  VERIFICATION_UNSPECIFIED = 0;
+  BUILTIN_HASH = 1;
+  USER_PROGRAM = 2;
+}
+
+message Job {
+  string jobId = 1;
+  string jobType = 2;         // e.g., "hash_mining", "ai_training"
+  string objectKey = 3;       // MinIO key for job payload/assets
+  string entryCommand = 4;    // command to run the job
+  // Verification
+  VerificationMethod verification = 7;
+  string verifierObjectKey = 8; // MinIO key for verifier assets (if USER_PROGRAM)
+  string verifierCommand = 9;   // command to run verifier (if USER_PROGRAM)
+  // Convenience URLs and output prefix (short-lived)
+  string payloadUrl = 10;
+  string verifierUrl = 11;
+  string outputPrefix = 12;   // e.g., outputs/<jobId>/
+}
+
+message JobResult {
+  string jobId = 1;
+  string workerId = 2;
+  string solution = 3;        // output (e.g., nonce/hash or path)
+  bool success = 4;           // worker's local success; controller may re-verify
+  string metricsJson = 5;     // optional JSON-encoded metrics/results
+}
+message ReportReply { bool ok = 1; }
+
+message PresignOutputReq {
+  string jobId = 1;
+  string fileName = 2;         // relative to outputs/<jobId>/
+  uint32 expiresSeconds = 3;   // optional; default by server
+}
+message PresignOutputReply {
+  string bucket = 1;
+  string objectKey = 2;  // outputs/<jobId>/<fileName>
+  string putUrl = 3;
+  string getUrl = 4;
+}

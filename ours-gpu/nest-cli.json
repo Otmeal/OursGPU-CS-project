@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/ours-gpu/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/ours-gpu/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/ours-gpu",
+  "projects": {
+    "controller": {
+      "type": "application",
+      "root": "apps/controller",
+      "entryFile": "main",
+      "sourceRoot": "apps/controller/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/controller/tsconfig.app.json",
+        "assets": [
+          { "include": "../../libs/shared/proto/**/*.proto", "outDir": "../../dist/libs/shared/proto" }
+        ],
+        "watchAssets": true
+      }
+    },
+    "shared": {
+      "type": "library",
+      "root": "libs/shared",
+      "entryFile": "index",
+      "sourceRoot": "libs/shared/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/shared/tsconfig.lib.json"
+      }
+    },
+    "worker": {
+      "type": "application",
+      "root": "apps/worker",
+      "entryFile": "main",
+      "sourceRoot": "apps/worker/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/worker/tsconfig.app.json",
+        "assets": [
+          { "include": "../../libs/shared/proto/**/*.proto", "outDir": "../../dist/libs/shared/proto" }
+        ],
+        "watchAssets": true
+      }
+    }
+  }
+}

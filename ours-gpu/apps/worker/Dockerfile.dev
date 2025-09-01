@@ -1,0 +1,27 @@
+# 開發用：裝好 pnpm、安裝 deps、給 compose 綁定原始碼做熱重載
+FROM node:22-slim
+
+ENV PNPM_HOME=/usr/local/share/pnpm \
+    PATH=/usr/local/share/pnpm:$PATH \
+    NODE_ENV=development
+
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends procps \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 盡可能利用快取：先複製 lockfiles / 工作區設定
+# 沒有的檔案可忽略；有什麼就複製什麼（保持快取命中）
+COPY ../../pnpm-lock.yaml* ../../pnpm-workspace.yaml* ../../package.json* ../../nest-cli.json* ./
+COPY ../../tsconfig.json* ../../tsconfig.build.json* ./
+
+# 這一步只裝依賴，不複製原始碼（原始碼以 volume 綁定進來）
+# RUN pnpm install --frozen-lockfile || pnpm install
+
+# 儲存 pnpm store 的位置（搭配 compose 的 named volume，共享快取）
+RUN pnpm config set store-dir /root/.pnpm-store
+
+# 預設命令交由 docker compose 覆寫
+CMD ["node", "-v"]
