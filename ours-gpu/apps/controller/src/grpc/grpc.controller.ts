@@ -9,9 +9,24 @@ export class GrpcController {
   constructor(private readonly grpcService: GrpcService) {}
 
   @GrpcMethod('WorkerService', 'Register')
-  register(payload: { id: string; orgId: string; concurrency: number }) {
-    this.logger.log(`Register called: id=${payload?.id} org=${payload?.orgId} conc=${payload?.concurrency}`);
+  register(payload: {
+    id: string;
+    orgId: string;
+    concurrency: number;
+    wallet?: string;
+    nonce?: string;
+    expires?: number;
+    signature?: string;
+  }) {
+    this.logger.log(
+      `Register called: id=${payload?.id} org=${payload?.orgId} conc=${payload?.concurrency}`,
+    );
     return this.grpcService.register(payload);
+  }
+
+  @GrpcMethod('WorkerService', 'GetRegisterChallenge')
+  getRegisterChallenge(payload: { id: string; wallet: string }) {
+    return this.grpcService.getRegisterChallenge(payload);
   }
 
   @GrpcMethod('WorkerService', 'Heartbeat')
@@ -32,14 +47,28 @@ export class GrpcController {
   }
 
   @GrpcMethod('WorkerService', 'ReportResult')
-  report(payload: { jobId: string; success: boolean; solution?: string; metricsJson?: string; workerId?: string }) {
-    this.logger.log(`ReportResult called: jobId=${payload?.jobId} success=${payload?.success}`);
+  report(payload: {
+    jobId: string;
+    success: boolean;
+    solution?: string;
+    metricsJson?: string;
+    workerId?: string;
+  }) {
+    this.logger.log(
+      `ReportResult called: jobId=${payload?.jobId} success=${payload?.success}`,
+    );
     return this.grpcService.report(payload);
   }
 
   @GrpcMethod('WorkerService', 'PresignOutput')
-  presignOutput(payload: { jobId: string; fileName: string; expiresSeconds?: number }) {
-    this.logger.debug(`PresignOutput called: jobId=${payload?.jobId} file=${payload?.fileName}`);
+  presignOutput(payload: {
+    jobId: string;
+    fileName: string;
+    expiresSeconds?: number;
+  }) {
+    this.logger.debug(
+      `PresignOutput called: jobId=${payload?.jobId} file=${payload?.fileName}`,
+    );
     return this.grpcService.presignOutput(payload);
   }
 }

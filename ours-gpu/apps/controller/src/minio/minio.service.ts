@@ -16,7 +16,8 @@ export class MinioService {
   constructor() {
     const endPoint = process.env.MINIO_ENDPOINT ?? 'minio';
     const port = Number.parseInt(process.env.MINIO_PORT ?? '9000', 10);
-    const useSSL = (process.env.MINIO_USE_SSL ?? 'false').toLowerCase() === 'true';
+    const useSSL =
+      (process.env.MINIO_USE_SSL ?? 'false').toLowerCase() === 'true';
     const accessKey = process.env.MINIO_ACCESS_KEY ?? 'minioadmin';
     const secretKey = process.env.MINIO_SECRET_KEY ?? 'minioadmin';
     this.accessKey = accessKey;
@@ -35,27 +36,45 @@ export class MinioService {
   }
 
   async ensureBucket() {
-    const exists = await this.client.bucketExists(this.bucket).catch(() => false);
+    const exists = await this.client
+      .bucketExists(this.bucket)
+      .catch(() => false);
     if (!exists) {
       await this.client.makeBucket(this.bucket, '');
       this.logger.log(`Created MinIO bucket: ${this.bucket}`);
     }
   }
 
-  async presignPut(objectKey: string, expiresSeconds = 3600, opts?: { public?: boolean }) {
+  async presignPut(
+    objectKey: string,
+    expiresSeconds = 3600,
+    opts?: { public?: boolean },
+  ) {
     await this.ensureBucket();
     if (opts?.public && this.publicBaseUrl) {
       return this.presignPublic('PUT', objectKey, expiresSeconds);
     }
-    return this.client.presignedPutObject(this.bucket, objectKey, expiresSeconds);
+    return this.client.presignedPutObject(
+      this.bucket,
+      objectKey,
+      expiresSeconds,
+    );
   }
 
-  async presignGet(objectKey: string, expiresSeconds = 3600, opts?: { public?: boolean }) {
+  async presignGet(
+    objectKey: string,
+    expiresSeconds = 3600,
+    opts?: { public?: boolean },
+  ) {
     await this.ensureBucket();
     if (opts?.public && this.publicBaseUrl) {
       return this.presignPublic('GET', objectKey, expiresSeconds);
     }
-    return this.client.presignedGetObject(this.bucket, objectKey, expiresSeconds);
+    return this.client.presignedGetObject(
+      this.bucket,
+      objectKey,
+      expiresSeconds,
+    );
   }
 
   async stat(objectKey: string) {
@@ -63,13 +82,23 @@ export class MinioService {
     return this.client.statObject(this.bucket, objectKey);
   }
 
-  private presignPublic(method: 'GET' | 'PUT', objectKey: string, expiresSeconds: number) {
+  private presignPublic(
+    method: 'GET' | 'PUT',
+    objectKey: string,
+    expiresSeconds: number,
+  ) {
     if (!this.publicBaseUrl) throw new Error('MINIO_PUBLIC_URL not configured');
     const base = new URL(this.publicBaseUrl);
     const protocol = base.protocol; // 'http:' | 'https:'
     const hostName = base.hostname;
-    const port = base.port ? parseInt(base.port, 10) : protocol === 'https:' ? 443 : 80;
-    const isDefaultPort = (protocol === 'https:' && port === 443) || (protocol === 'http:' && port === 80);
+    const port = base.port
+      ? parseInt(base.port, 10)
+      : protocol === 'https:'
+        ? 443
+        : 80;
+    const isDefaultPort =
+      (protocol === 'https:' && port === 443) ||
+      (protocol === 'http:' && port === 80);
     const hostHeader = isDefaultPort ? hostName : `${hostName}:${port}`;
 
     const now = new Date();
@@ -96,11 +125,28 @@ export class MinioService {
     const signedHeaders = 'host';
     const payloadHash = 'UNSIGNED-PAYLOAD';
 
-    const canonicalRequest = [method, canonicalUri, canonicalQuery, canonicalHeaders, signedHeaders, payloadHash].join('\n');
+    const canonicalRequest = [
+      method,
+      canonicalUri,
+      canonicalQuery,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n');
     const canonicalRequestHash = this.sha256Hex(canonicalRequest);
-    const stringToSign = ['AWS4-HMAC-SHA256', amzDate, `${dateStamp}/${this.region}/s3/aws4_request`, canonicalRequestHash].join('\n');
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      `${dateStamp}/${this.region}/s3/aws4_request`,
+      canonicalRequestHash,
+    ].join('\n');
 
-    const signingKey = this.getSigningKey(this.secretKey, dateStamp, this.region, 's3');
+    const signingKey = this.getSigningKey(
+      this.secretKey,
+      dateStamp,
+      this.region,
+      's3',
+    );
     const signature = this.hmacHex(signingKey, stringToSign);
 
     const finalQuery = `${canonicalQuery}&X-Amz-Signature=${signature}`;
@@ -141,11 +187,22 @@ export class MinioService {
     return createHmac('sha256', key).update(data, 'utf8').digest('hex');
   }
 
-  private getSigningKey(secretKey: string, dateStamp: string, regionName: string, serviceName: string) {
+  private getSigningKey(
+    secretKey: string,
+    dateStamp: string,
+    regionName: string,
+    serviceName: string,
+  ) {
     const kDate = this.hmac(`AWS4${secretKey}`, dateStamp);
-    const kRegion = createHmac('sha256', kDate).update(regionName, 'utf8').digest();
-    const kService = createHmac('sha256', kRegion).update(serviceName, 'utf8').digest();
-    const kSigning = createHmac('sha256', kService).update('aws4_request', 'utf8').digest();
+    const kRegion = createHmac('sha256', kDate)
+      .update(regionName, 'utf8')
+      .digest();
+    const kService = createHmac('sha256', kRegion)
+      .update(serviceName, 'utf8')
+      .digest();
+    const kSigning = createHmac('sha256', kService)
+      .update('aws4_request', 'utf8')
+      .digest();
     return kSigning;
   }
 }

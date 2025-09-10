@@ -15,8 +15,11 @@ import { join } from 'path';
             [
               join(__dirname, '../../libs/shared/proto/worker.proto'),
               join(process.cwd(), 'libs/shared/proto/worker.proto'),
-            ].find((p) => existsSync(p)) ?? join(__dirname, '../../libs/shared/proto/worker.proto'),
-          url: process.env.CONTROLLER_GRPC ?? 'controller:50051',
+            ].find((p) => existsSync(p)) ??
+            join(__dirname, '../../libs/shared/proto/worker.proto'),
+          url: process.env.CONTROLLER_GRPC ?? 'controller1:50051',
+          // Align uint64 wire types to JS numbers
+          loader: { longs: Number },
         },
       },
     ]),
@@ -24,4 +27,3 @@ import { join } from 'path';
   exports: [ClientsModule],
 })
 export class GrpcClientModule {}
-

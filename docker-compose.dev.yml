@@ -1,5 +1,3 @@
-version: "3.9"
-
 # 開發者體驗要快：pnpm store 與 node_modules 都用 named volumes，避免每次重裝
 volumes:
   pnpm-store:
@@ -10,6 +8,22 @@ volumes:
   minio_data_dev:
 
 services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: oursgpu-anvil-dev
+    entrypoint: ["anvil"]
+    command:
+      ["--host","0.0.0.0",
+       "--port","8545",
+       "--chain-id","31337",
+       "--block-time","1",
+       "--mnemonic","test test test test test test test test test test test junk",
+       "--accounts","10",
+       "--balance","1000000",
+       "--base-fee","0",
+       "--gas-price","0"]
+    ports:
+      - "8545:8545"
   postgres:
     image: postgres:16-alpine
     container_name: oursgpu-postgres-dev
@@ -34,11 +48,11 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
-  controller:
+  controller1:
     build:
       context: ./ours-gpu
       dockerfile: ./apps/controller/Dockerfile.dev
-    container_name: oursgpu-controller-dev
+    container_name: oursgpu-controller1-dev
     working_dir: /app
     # 綁定 Nest 工作區根目錄（./ours-gpu）到 /app，讓 pnpm 能找到 package.json / pnpm-workspace.yaml
     volumes:
@@ -52,7 +66,7 @@ services:
       && pnpm exec nest start controller --watch"
     environment:
       NODE_ENV: development
-      # controller 自己跑 gRPC 在 0.0.0.0:50051；workers 透過服務名連
+      # controller 自己跑 gRPC 在 0.0.0.0:50051；workers 透過服務名連（controller1）
       CONTROLLER_GRPC: 0.0.0.0:50051
       DATABASE_URL: postgresql://oursgpu:oursgpu@postgres:5432/oursgpu
       MINIO_ENDPOINT: minio
@@ -63,6 +77,13 @@ services:
       MINIO_BUCKET_JOBS: jobs
       # For presigned URLs returned by HTTP APIs (host-side e2e or UI), rewrite to localhost
       MINIO_PUBLIC_URL: http://localhost:9000
+      # EVM chain & wallet
+      CHAIN_RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      WALLET_MNEMONIC: test test test test test test test test test test test junk
+      WALLET_INDEX: "0"
+    env_file:
+      - ./ours-gpu/.env.contracts
     ports:
       - "3000:3000"   # REST / HTTP
       - "50051:50051" # gRPC
@@ -79,6 +100,9 @@ services:
       timeout: 3s
       retries: 30
       start_period: 20s
+    depends_on:
+      anvil:
+        condition: service_started
 
   worker1:
     build:
@@ -95,14 +119,25 @@ services:
       && pnpm exec nest start worker --watch"
     environment:
       NODE_ENV: development
-      # 用服務名連 controller：compose 裡服務名即 DNS
-      CONTROLLER_GRPC: controller:50051
+      # 用服務名連 controller1：compose 裡服務名即 DNS
+      CONTROLLER_GRPC: controller1:50051
+      # Static worker identity for stable registration across restarts
+      WORKER_ID: worker1
+      # EVM chain & wallet
+      CHAIN_RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      WALLET_MNEMONIC: test test test test test test test test test test test junk
+      WALLET_INDEX: "1"
+    env_file:
+      - ./ours-gpu/.env.contracts
     depends_on:
-      controller:
+      controller1:
         condition: service_healthy
       postgres:
         condition: service_started
       minio:
+        condition: service_started
+      anvil:
         condition: service_started
     tty: true
     stdin_open: true
@@ -122,13 +157,24 @@ services:
       && pnpm exec nest start worker --watch"
     environment:
       NODE_ENV: development
-      CONTROLLER_GRPC: controller:50051
+      CONTROLLER_GRPC: controller1:50051
+      # Static worker identity for stable registration across restarts
+      WORKER_ID: worker2
+      # EVM chain & wallet
+      CHAIN_RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      WALLET_MNEMONIC: test test test test test test test test test test test junk
+      WALLET_INDEX: "2"
+    env_file:
+      - ./ours-gpu/.env.contracts
     depends_on:
-      controller:
+      controller1:
         condition: service_healthy
       postgres:
         condition: service_started
       minio:
+        condition: service_started
+      anvil:
         condition: service_started
     tty: true
     stdin_open: true

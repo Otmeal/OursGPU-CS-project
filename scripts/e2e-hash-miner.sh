@@ -12,12 +12,12 @@ ORG_ID=${ORG_ID:-org-1}
 JOB_TYPE=${JOB_TYPE:-hash_mining}
 VERIFICATION=${VERIFICATION:-BUILTIN_HASH}
 SEED=${SEED:-hello-oursgpu}
-DIFFICULTY=${DIFFICULTY:-10}
+DIFFICULTY=${DIFFICULTY:-24}
 OBJECT_KEY=${OBJECT_KEY:-programs/hash-miner-$(date +%s).js}
-PROGRAM_PATH=${PROGRAM_PATH:-$(cd "$(dirname "$0")/.." && pwd)/examples/hash-miner.js}
+PROGRAM_PATH=${PROGRAM_PATH:-./ours-gpu/examples/hash-miner.js}
 TIMEOUT_SECS=${TIMEOUT_SECS:-60}
 SLEEP_SECS=${SLEEP_SECS:-2}
-WORKER_ID=${WORKER_ID:-5bc25a93-2a12-47d9-9449-468ba49cdb66}
+WORKER_ID=${WORKER_ID:-}
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1" >&2; exit 1; }

@@ -61,4 +61,11 @@ contract ControllerLicense is ERC721URIStorage, AccessManaged {
     ) external restricted {
         _setTokenURI(tokenId, uri);
     }
+
+    /// @notice Check whether an address currently holds at least one controller license NFT.
+    /// @param account Address to check
+    /// @return True if `account` owns at least one license token
+    function isController(address account) external view returns (bool) {
+        return balanceOf(account) > 0;
+    }
 }

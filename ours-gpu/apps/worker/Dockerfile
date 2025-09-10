@@ -45,7 +45,7 @@ USER node
 
 # 多數情境下，worker 會透過環境變數知道 controller 的 gRPC 位址
 # 與程式一致使用 CONTROLLER_GRPC（見 WorkerModule）
-ENV CONTROLLER_GRPC=controller:50051
+ENV CONTROLLER_GRPC=controller1:50051
 
 # 心跳間隔（毫秒）
 ENV HEARTBEAT_MS=2000

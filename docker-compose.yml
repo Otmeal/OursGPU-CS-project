@@ -1,5 +1,19 @@
-version: '3.9'
 services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: ["anvil"]
+    command:
+      ["--host","0.0.0.0",
+       "--port","8545",
+       "--chain-id","31337",
+       "--block-time","1",
+       "--mnemonic","test test test test test test test test test test test junk",
+       "--accounts","10",
+       "--balance","1000000",
+       "--base-fee","0",
+       "--gas-price","0"]
+    ports:
+      - "8545:8545"
   postgres:
     image: postgres:16-alpine
     environment:
@@ -21,7 +35,7 @@ services:
       - "9000:9000"
       - "9001:9001"
 
-  controller:
+  controller1:
     build: 
       context: ./ours-gpu
       dockerfile: ./apps/controller/Dockerfile
@@ -38,27 +52,39 @@ services:
       - MINIO_SECRET_KEY=minioadmin
       - MINIO_USE_SSL=false
       - MINIO_BUCKET_JOBS=jobs
-    depends_on: [postgres, minio]
+      - CHAIN_RPC_URL=http://anvil:8545
+      - CHAIN_ID=31337
+      - WALLET_MNEMONIC=test test test test test test test test test test test junk
+      - WALLET_INDEX=0
+    depends_on: [postgres, minio, anvil]
 
   worker1:
     build:
       context: ./ours-gpu
       dockerfile: ./apps/worker/Dockerfile
     environment:
-      - CONTROLLER_GRPC=controller:50051
+      - CONTROLLER_GRPC=controller1:50051
       - WORKER_ID=worker-1
       - ORG_ID=org-1
-    depends_on: [controller]
+      - CHAIN_RPC_URL=http://anvil:8545
+      - CHAIN_ID=31337
+      - WALLET_MNEMONIC=test test test test test test test test test test test junk
+      - WALLET_INDEX=1
+    depends_on: [controller1, anvil]
 
   worker2:
     build:
       context: ./ours-gpu
       dockerfile: ./apps/worker/Dockerfile
     environment:
-      - CONTROLLER_GRPC=controller:50051
+      - CONTROLLER_GRPC=controller1:50051
       - WORKER_ID=worker-2
       - ORG_ID=org-1
-    depends_on: [controller]
+      - CHAIN_RPC_URL=http://anvil:8545
+      - CHAIN_ID=31337
+      - WALLET_MNEMONIC=test test test test test test test test test test test junk
+      - WALLET_INDEX=2
+    depends_on: [controller1, anvil]
 
 volumes:
   pgdata:

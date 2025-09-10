@@ -4,6 +4,7 @@ package ours_gpu;
 
 service WorkerService {
   rpc Register(WorkerInfo) returns (RegisterReply);
+  rpc GetRegisterChallenge(RegisterChallengeReq) returns (RegisterChallengeReply);
   rpc Heartbeat(HeartbeatReq) returns (HeartbeatReply);
   rpc PullJob(PullJobReq) returns (Job);          // worker 主動拉任務（簡單好做）
   rpc JobStream(SubscribeReq) returns (stream Job); // 推播：controller 主動指派
@@ -15,6 +16,20 @@ message WorkerInfo {
   string id = 1;           // 由 worker 產生（uuid）
   string orgId = 2;        // 組織（之後可從鏈上驗）
   uint32 concurrency = 3;  // 可同時跑幾個 job
+  string wallet = 4;       // EVM address of the worker wallet (for staking checks)
+  string nonce = 5;        // EIP-712: 0x-prefixed 32-byte nonce
+  uint64 expires = 6;      // EIP-712: unix seconds expiry
+  string signature = 7;    // EIP-712: 0x-signature
+}
+
+message RegisterChallengeReq { string id = 1; string wallet = 2; }
+message RegisterChallengeReply {
+  string nonce = 1;               // 0x-prefixed 32-byte random nonce
+  uint64 expires = 2;             // unix seconds
+  uint64 chainId = 3;             // chain id for domain
+  string name = 4;                // domain name (default: OursGPU)
+  string version = 5;             // domain version (default: 1)
+  string salt = 6;                // EIP-712 domain salt (bytes32)
 }
 
 message RegisterReply { bool ok = 1; string note = 2; }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
-import '@openzeppelin/contracts/access/manager/AccessManaged.sol';
+import "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 
 /// @title OrgRegistry
 /// @notice Manages an organizational hierarchy of arbitrary depth on-chain, allowing assignment of users and nodes
@@ -37,16 +37,15 @@ contract OrgRegistry is AccessManaged {
     /// @param parentOrg ID of the parent organization (0 if root)
     /// @param name Name of the organization
     /// @return The newly created organization ID
-    function registerOrg(
-        uint256 parentOrg,
-        uint256 baseRate,
-        uint256 perLevelMarkup,
-        string calldata name
-    ) external restricted returns (uint256) {
+    function registerOrg(uint256 parentOrg, uint256 baseRate, uint256 perLevelMarkup, string calldata name)
+        external
+        restricted
+        returns (uint256)
+    {
         uint256 orgId = _nextOrgId++;
+        // Allow top-level orgs with parentOrg == 0 (virtual root). Otherwise, parent must exist.
         require(
-            parentOrg == 0 || bytes(organizations[parentOrg].name).length != 0,
-            'OrgRegistry: parentOrg does not exist'
+            parentOrg == 0 || bytes(organizations[parentOrg].name).length != 0, "OrgRegistry: parentOrg does not exist"
         );
         organizations[orgId] = Org(parentOrg, name, baseRate, perLevelMarkup);
         emit OrgRegistered(orgId, parentOrg, name);
@@ -57,10 +56,7 @@ contract OrgRegistry is AccessManaged {
     /// @param user Address of the user
     /// @param orgId ID of the organization
     function assignUser(address user, uint256 orgId) external restricted {
-        require(
-            bytes(organizations[orgId].name).length != 0,
-            'OrgRegistry: organization does not exist'
-        );
+        require(bytes(organizations[orgId].name).length != 0, "OrgRegistry: organization does not exist");
         userOrganizations[user] = orgId;
         emit UserAssigned(user, orgId);
     }
@@ -69,10 +65,7 @@ contract OrgRegistry is AccessManaged {
     /// @param node Address of the node
     /// @param orgId ID of the organization
     function assignNode(address node, uint256 orgId) external restricted {
-        require(
-            bytes(organizations[orgId].name).length != 0,
-            'OrgRegistry: organization does not exist'
-        );
+        require(bytes(organizations[orgId].name).length != 0, "OrgRegistry: organization does not exist");
         nodeOrganizations[node] = orgId;
         emit NodeAssigned(node, orgId);
     }
@@ -80,9 +73,7 @@ contract OrgRegistry is AccessManaged {
     /// @notice Retrieve the full hierarchy for a given organization ID
     /// @param orgId The organization ID to query
     /// @return An array of organization IDs from the root to the given orgId
-    function getOrgHierarchy(
-        uint256 orgId
-    ) public view returns (uint256[] memory) {
+    function getOrgHierarchy(uint256 orgId) public view returns (uint256[] memory) {
         uint256 count = 0;
         uint256 current = orgId;
         while (current != 0) {
@@ -104,31 +95,24 @@ contract OrgRegistry is AccessManaged {
     /// @notice Retrieve the full hierarchy for the organization a user belongs to
     /// @param user Address of the user
     /// @return An array of organization IDs from the root to the user's organization
-    function getUserOrgHierarchy(
-        address user
-    ) external view returns (uint256[] memory) {
+    function getUserOrgHierarchy(address user) external view returns (uint256[] memory) {
         return getOrgHierarchy(userOrganizations[user]);
     }
 
     /// @notice Retrieve the full hierarchy for the organization a node belongs to
     /// @param node Address of the node
     /// @return An array of organization IDs from the root to the node's organization
-    function getNodeOrgHierarchy(
-        address node
-    ) external view returns (uint256[] memory) {
+    function getNodeOrgHierarchy(address node) external view returns (uint256[] memory) {
         return getOrgHierarchy(nodeOrganizations[node]);
     }
 
     /// @dev 計算 userOrg 與 gpuOrg 之間的跳數
-    function getDistanceToLCA(
-        uint256 from,
-        uint256 to
-    ) public view returns (uint256) {
+    function getDistanceToLCA(uint256 from, uint256 to) public view returns (uint256) {
         uint256 dist = 0;
         uint256 fromCurrent = from;
         uint256 toCurrent = to;
-        uint fromDepth = 0;
-        uint toDepth = 0;
+        uint256 fromDepth = 0;
+        uint256 toDepth = 0;
 
         // Calculate depth of fromOrg
         while (fromCurrent != 0) {
@@ -163,14 +147,8 @@ contract OrgRegistry is AccessManaged {
     }
 
     /// @dev Calculate the fee for a user based on their organization and the node's organization. The node to its parent organization is counted one hops.
-    function calculateFee(
-        uint256 userOrg,
-        uint256 nodeOrg
-    ) external view returns (uint256) {
+    function calculateFee(uint256 userOrg, uint256 nodeOrg) external view returns (uint256) {
         uint256 dist = getDistanceToLCA(nodeOrg, userOrg);
-        return
-            organizations[nodeOrg].baseRate +
-            organizations[nodeOrg].perLevelMarkup *
-            (dist + 1);
+        return organizations[nodeOrg].baseRate + organizations[nodeOrg].perLevelMarkup * (dist + 1);
     }
 }

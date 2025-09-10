@@ -43,7 +43,7 @@ model Job {
 }
 
 model Worker {
-  id          String   @id @db.Uuid
+  id          String   @id @db.Text
   orgId       String
   concurrency Int
   running     Int      @default(0)

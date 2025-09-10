@@ -5,7 +5,13 @@ import { VerificationMethod } from '@prisma/client';
 import { Observable, ReplaySubject } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 
-type Worker = { id: string; orgId: string; concurrency: number; lastSeen: number; running: number; };
+type Worker = {
+  id: string;
+  orgId: string;
+  concurrency: number;
+  lastSeen: number;
+  running: number;
+};
 type WorkerJobPayload = {
   jobId: string;
   jobType: string;
@@ -18,7 +24,13 @@ type WorkerJobPayload = {
   payloadUrl?: string;
   verifierUrl?: string;
   outputPrefix: string;
-  status: 'REQUESTED'|'SCHEDULED'|'PROCESSING'|'VERIFYING'|'DONE'|'FAILED';
+  status:
+    | 'REQUESTED'
+    | 'SCHEDULED'
+    | 'PROCESSING'
+    | 'VERIFYING'
+    | 'DONE'
+    | 'FAILED';
   workerId?: string;
   solution?: string;
   metricsJson?: string;
@@ -56,21 +68,31 @@ export class WorkersService {
   }
   async heartbeat(id: string, running: number) {
     try {
-      await this.prisma.worker.update({ where: { id }, data: { running, lastSeen: new Date() } });
+      await this.prisma.worker.update({
+        where: { id },
+        data: { running, lastSeen: new Date() },
+      });
       return true;
     } catch {
       return false;
     }
   }
-  enqueue(job: WorkerJobPayload) { this.jobQueue.push(job); this.jobs.set(job.jobId, job); }
+  enqueue(job: WorkerJobPayload) {
+    this.jobQueue.push(job);
+    this.jobs.set(job.jobId, job);
+  }
   subscribe(workerId: string): Observable<WorkerJobPayload> {
     let subj = this.streams.get(workerId);
-    if (!subj) { subj = new ReplaySubject<WorkerJobPayload>(1); this.streams.set(workerId, subj); }
+    if (!subj) {
+      subj = new ReplaySubject<WorkerJobPayload>(1);
+      this.streams.set(workerId, subj);
+    }
     return subj.asObservable();
   }
 
   private getOrCreateStream(workerId: string) {
-    if (!this.streams.has(workerId)) this.streams.set(workerId, new ReplaySubject<WorkerJobPayload>(1));
+    if (!this.streams.has(workerId))
+      this.streams.set(workerId, new ReplaySubject<WorkerJobPayload>(1));
     return this.streams.get(workerId)!;
   }
 
@@ -83,7 +105,10 @@ export class WorkersService {
 
     const payloadUrl = await this.minio.presignGet(refreshed.objectKey);
     let verifierUrl: string | undefined;
-    if (refreshed.verification === VerificationMethod.USER_PROGRAM && refreshed.verifierObjectKey) {
+    if (
+      refreshed.verification === VerificationMethod.USER_PROGRAM &&
+      refreshed.verifierObjectKey
+    ) {
       verifierUrl = await this.minio.presignGet(refreshed.verifierObjectKey);
     }
 
@@ -117,7 +142,10 @@ export class WorkersService {
     // Presign payload and optional verifier for convenience
     const payloadUrl = await this.minio.presignGet(dbJob.objectKey);
     let verifierUrl: string | undefined;
-    if (dbJob.verification === VerificationMethod.USER_PROGRAM && dbJob.verifierObjectKey) {
+    if (
+      dbJob.verification === VerificationMethod.USER_PROGRAM &&
+      dbJob.verifierObjectKey
+    ) {
       verifierUrl = await this.minio.presignGet(dbJob.verifierObjectKey);
     }
 
@@ -138,8 +166,14 @@ export class WorkersService {
     this.jobs.set(j.jobId, j);
     return j;
   }
-  async report(jobId: string, ok: boolean, solution?: string, metricsJson?: string) {
-    const j = this.jobs.get(jobId); if (!j) return false;
+  async report(
+    jobId: string,
+    ok: boolean,
+    solution?: string,
+    metricsJson?: string,
+  ) {
+    const j = this.jobs.get(jobId);
+    if (!j) return false;
     j.solution = solution;
     j.metricsJson = metricsJson;
     j.status = ok ? 'DONE' : 'FAILED';
@@ -148,7 +182,13 @@ export class WorkersService {
     return true;
   }
 
-  listWorkers() { return this.prisma.worker.findMany({ orderBy: { lastSeen: 'desc' } }); }
-  listJobs() { return [...this.jobs.values()]; }
-  listJobsByWorker(workerId: string) { return [...this.jobs.values()].filter((j) => j.workerId === workerId); }
+  listWorkers() {
+    return this.prisma.worker.findMany({ orderBy: { lastSeen: 'desc' } });
+  }
+  listJobs() {
+    return [...this.jobs.values()];
+  }
+  listJobsByWorker(workerId: string) {
+    return [...this.jobs.values()].filter((j) => j.workerId === workerId);
+  }
 }

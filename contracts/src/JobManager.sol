@@ -3,7 +3,12 @@ pragma solidity ^0.8.29;
 
 import '@openzeppelin/contracts/access/manager/AccessManaged.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/token/ERC721/IERC721.sol';
 import './OrgRegistry.sol';
+// Minimal interface to query worker stake
+interface IWorkerManager {
+    function stakeOf(address worker) external view returns (uint256);
+}
 
 /// @title Job Manager
 /// @author
@@ -18,6 +23,12 @@ contract JobManager is AccessManaged {
 
     /// @notice Reference to the OrgRegistry contract for organization data
     OrgRegistry public orgRegistry;
+
+    /// @notice Controller license NFT used to authorize controller actions
+    IERC721 public controllerLicense;
+
+    /// @notice Worker manager used to verify worker staking eligibility
+    IWorkerManager public workerManager;
 
     /// @notice Job lifecycle statuses
     enum JobStatus {
@@ -66,20 +77,31 @@ contract JobManager is AccessManaged {
     /// @param manager Address of the AccessManaged manager
     /// @param _tokenAddress Address of the ERC20 token used for payments
     /// @param orgRegistryAddress Address of the OrgRegistry contract
+    /// @param controllerLicenseAddress Address of the ControllerLicense (ERC721) contract
+    /// @param workerManagerAddress Address of the WorkerManager (staking vault)
     constructor(
         address manager,
         address _tokenAddress,
-        address orgRegistryAddress
+        address orgRegistryAddress,
+        address controllerLicenseAddress,
+        address workerManagerAddress
     ) AccessManaged(manager) {
         require(_tokenAddress != address(0), '_tokenAddress is zero address');
         token = IERC20(_tokenAddress);
         orgRegistry = OrgRegistry(orgRegistryAddress);
+        controllerLicense = IERC721(controllerLicenseAddress);
+        workerManager = IWorkerManager(workerManagerAddress);
     }
 
     /// @notice Updates the status of an existing job
     /// @param jobId Unique identifier of the job to update
     /// @param status New status to set for the job
     function updateStatus(uint256 jobId, JobStatus status) external {
+        // Only licensed controllers can update job status
+        require(
+            controllerLicense.balanceOf(msg.sender) > 0,
+            'JobManager: caller not controller'
+        );
         _jobs[jobId].status = status;
         emit JobStatusChanged(jobId, status);
     }
@@ -128,6 +150,9 @@ contract JobManager is AccessManaged {
     function submitSolve(uint256 jobId, uint256 nonce) external {
         Job storage j = _jobs[jobId];
         require(j.status == JobStatus.REQUESTED, 'Job is already closed');
+
+        // Require the worker to have an active stake
+        require(workerManager.stakeOf(msg.sender) > 0, 'JobManager: no stake');
 
         // 1. Verify the solution via hash < difficulty
         bytes32 result = keccak256(abi.encodePacked(jobId, nonce));
