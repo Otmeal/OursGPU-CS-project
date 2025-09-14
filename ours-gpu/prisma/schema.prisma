@@ -27,9 +27,15 @@ model Job {
   jobType          String
   status           JobStatus  @default(REQUESTED)
   objectKey        String     // MinIO object key containing job payload/config
+  // MinIO object key to primary output/result (e.g., outputs/<jobId>/result.txt)
+  outputObjectKey  String?
   metadata         Json?
   priority         Int        @default(0)
-  assignedWorkerId String?
+  workerId         String     @db.Text
+  worker           Worker     @relation(fields: [workerId], references: [id])
+  // Optional owner of the job (user)
+  userId           String?    @db.Text
+  user             User?      @relation(fields: [userId], references: [id])
   // Command to start the computation in worker runtime (e.g., bash entrypoint)
   entryCommand     String?
   // How to verify results: built-in hash vs user-provided verifier program
@@ -40,6 +46,9 @@ model Job {
   verifierCommand   String?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
+
+  @@index([workerId])
+  @@index([userId])
 }
 
 model Worker {
@@ -50,4 +59,17 @@ model Worker {
   lastSeen    DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Relation: one Worker has many Jobs
+  jobs        Job[]
+}
+
+model User {
+  // Primary key is the wallet address (normalized lowercase by app code)
+  id             String  @id @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relation: one User has many Jobs
+  jobs           Job[]
 }

@@ -211,8 +211,11 @@ cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$WORKER1_ADDR" 1 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$WORKER2_ADDR" 2 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$TEST_USER_ADDR" 1 \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
-info "Starting controller and workers with contract env"
-docker compose -f "$COMPOSE_FILE" up -d controller1 worker1 worker2
+info "Starting controller, workers, and frontend (Nuxt) with contract env"
+docker compose -f "$COMPOSE_FILE" up -d controller1 worker1 worker2 frontend nginx
 
-info "Done. Controller: http://localhost:3000 health at /health"
+info "Done. Controller: http://localhost:8000 (health at /health)"
+info "Nuxt dev server: http://localhost:3000"

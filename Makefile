@@ -5,6 +5,15 @@ SHELL := /bin/bash
 dev-up:
 	bash scripts/dev-up.sh
 
+dev-du:
+	$(MAKE) dev-down
+	$(MAKE) dev-up
+
+dev-dbu:
+	$(MAKE) dev-build
+	$(MAKE) dev-down
+	$(MAKE) dev-up
+
 dev-test:
 	bash scripts/e2e-hash-miner.sh
 

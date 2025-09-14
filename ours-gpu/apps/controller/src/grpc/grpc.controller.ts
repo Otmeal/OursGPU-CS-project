@@ -34,12 +34,6 @@ export class GrpcController {
     return this.grpcService.heartbeat(payload);
   }
 
-  @GrpcMethod('WorkerService', 'PullJob')
-  pullJob(payload: { id: string }) {
-    this.logger.debug(`PullJob called: id=${payload?.id}`);
-    return this.grpcService.pullJob(payload);
-  }
-
   @GrpcMethod('WorkerService', 'JobStream')
   jobStream(payload: { id: string }) {
     this.logger.log(`JobStream subscribed: id=${payload?.id}`);

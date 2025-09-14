@@ -1,0 +1,24 @@
+# Dev image for Nuxt app: installs pnpm and prepares workspace
+FROM node:22-slim
+
+ENV PNPM_HOME=/usr/local/share/pnpm \
+    PATH=/usr/local/share/pnpm:$PATH \
+    NODE_ENV=development
+
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends procps curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Cache-friendly: copy lockfiles and workspace configs
+COPY ../../pnpm-lock.yaml* ../../pnpm-workspace.yaml* ../../package.json* ./
+COPY ../../tsconfig.json* ./
+
+# Configure pnpm store to a known path (shared via named volume in compose)
+RUN pnpm config set store-dir /root/.pnpm-store
+
+# Default cmd is overridden by docker-compose
+CMD ["node", "-v"]
+

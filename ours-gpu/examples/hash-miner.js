@@ -35,11 +35,11 @@ function main() {
     if (lz >= targetBits) {
       const ms = Date.now() - start;
       // Print solution as: nonce hexHash ms
-      process.stdout.write(`${nonce.toString()} ${digest} ${ms}`);
+      process.stdout.write(`Seed: ${seed}\nNonce: ${nonce.toString()}\nDigest${digest}\nTime spent(ms):${ms}`);
       return;
     }
     nonce++;
-    // Yield occasionally to keep the event loop alive for very high difficulties
+
     if (nonce % 100000n === 0n) {
       if (Date.now() - start > 30 * 60 * 1000) {
         // 30 minutes cap to avoid infinite runs in tests

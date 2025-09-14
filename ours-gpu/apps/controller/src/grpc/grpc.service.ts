@@ -250,10 +250,6 @@ export class GrpcService {
     return { ok };
   }
 
-  pullJob({ id }: { id: string }) {
-    return this.workerService.pullJob(id) ?? {};
-  }
-
   jobStream({ id }: { id: string }) {
     // Return a server-streaming Observable of Job for this worker
     return this.workerService.subscribe(id);

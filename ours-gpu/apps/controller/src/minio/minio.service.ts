@@ -82,6 +82,20 @@ export class MinioService {
     return this.client.statObject(this.bucket, objectKey);
   }
 
+  async putObject(
+    objectKey: string,
+    data: Buffer | string,
+    contentType?: string,
+  ) {
+    await this.ensureBucket();
+    const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
+    const meta: Record<string, string> = {};
+    if (contentType) meta['Content-Type'] = contentType;
+    // minio-js requires size when passing Buffer
+    await this.client.putObject(this.bucket, objectKey, buf, buf.length, meta);
+    return { bucket: this.bucket, objectKey };
+  }
+
   private presignPublic(
     method: 'GET' | 'PUT',
     objectKey: string,

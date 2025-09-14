@@ -33,18 +33,13 @@ type WorkerInfo = {
 type RegisterReply = { ok: boolean; note?: string };
 type HeartbeatReq = { id: string; running: number };
 type HeartbeatReply = { ok: boolean };
-type PullJobReq = { id: string };
 type Job = {
   jobId: string;
   jobType: string;
   objectKey: string;
   entryCommand?: string;
-  verification: 'BUILTIN_HASH' | 'USER_PROGRAM';
-  verifierObjectKey?: string;
-  verifierCommand?: string;
   // Convenience URLs and output prefix from controller
   payloadUrl?: string;
-  verifierUrl?: string;
   outputPrefix?: string;
 };
 type JobResult = {
@@ -68,7 +63,6 @@ interface WorkerGrpcClient {
     salt: string;
   }>;
   heartbeat(data: HeartbeatReq): Observable<HeartbeatReply>;
-  pullJob(data: PullJobReq): Observable<Job | undefined>;
   reportResult(data: JobResult): Observable<ReportReply>;
   presignOutput(data: {
     jobId: string;

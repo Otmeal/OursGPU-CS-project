@@ -3,40 +3,48 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, Job, JobStatus } from '@prisma/client';
 
 // Prefer Prisma-generated input type for creation, omitting server-controlled fields
-export type CreateJobDto = Omit<
-  Prisma.JobCreateInput,
-  'status' | 'assignedWorkerId' | 'createdAt' | 'updatedAt' | 'id'
->;
+// Use Unchecked to allow plain scalar workerId while we also model relations
 
 @Injectable()
 export class JobsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateJobDto): Promise<Job> {
+  create(dto: Prisma.JobUncheckedCreateInput): Promise<Job> {
     return this.prisma.job.create({
-      data: { ...dto, status: JobStatus.REQUESTED },
+      data: {
+        ...dto,
+        status: JobStatus.REQUESTED,
+      },
     });
   }
 
-  list(): Promise<Job[]> {
-    return this.prisma.job.findMany({ orderBy: { createdAt: 'desc' } });
+  list(userId?: string): Promise<Job[]> {
+    return this.prisma.job.findMany({
+        orderBy: { createdAt: 'desc' } 
+      , ...(userId ? { where: { userId } } : {})
+      });
   }
 
   findById(id: string): Promise<Job | null> {
     return this.prisma.job.findUnique({ where: { id } });
   }
 
-  nextSchedulable(): Promise<Job | null> {
-    return this.prisma.job.findFirst({
-      where: { status: JobStatus.REQUESTED },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+  jobsByUser(
+    userId: string,
+    opts?: { status?: JobStatus; skip?: number; take?: number },
+  ): Promise<Job[]> {
+    return this.prisma.job.findMany({
+      where: { userId, ...(opts?.status ? { status: opts.status } : {}) },
+      orderBy: { createdAt: 'desc' },
+      skip: opts?.skip,
+      take: opts?.take ?? 50,
     });
   }
 
   markScheduled(id: string, workerId: string) {
     return this.prisma.job.update({
       where: { id },
-      data: { status: JobStatus.SCHEDULED, assignedWorkerId: workerId },
+      data: { status: JobStatus.SCHEDULED, workerId },
     });
   }
 
@@ -44,6 +52,13 @@ export class JobsService {
     return this.prisma.job.update({
       where: { id },
       data: { status: success ? JobStatus.DONE : JobStatus.FAILED },
+    });
+  }
+
+  setOutputKey(id: string, outputObjectKey: string | null) {
+    return this.prisma.job.update({
+      where: { id },
+      data: { outputObjectKey: outputObjectKey ?? undefined },
     });
   }
 }

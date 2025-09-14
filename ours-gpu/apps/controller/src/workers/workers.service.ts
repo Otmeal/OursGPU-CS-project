@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { JobsService } from '../jobs/jobs.service';
 import { MinioService } from '../minio/minio.service';
-import { VerificationMethod } from '@prisma/client';
+import { Job } from '@prisma/client';
 import { Observable, ReplaySubject } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -17,12 +17,8 @@ type WorkerJobPayload = {
   jobType: string;
   objectKey: string;
   entryCommand?: string;
-  verification: 'BUILTIN_HASH' | 'USER_PROGRAM';
-  verifierObjectKey?: string;
-  verifierCommand?: string;
   // Convenience URLs/prefix for storage
   payloadUrl?: string;
-  verifierUrl?: string;
   outputPrefix: string;
   status:
     | 'REQUESTED'
@@ -96,74 +92,22 @@ export class WorkersService {
     return this.streams.get(workerId)!;
   }
 
-  async dispatch(jobId: string, workerId: string) {
-    // Mark the specific job as scheduled for this worker
-    await this.jobsSvc.markScheduled(jobId, workerId);
-    // Retrieve latest job row to build payload
-    const refreshed = await this.jobsSvc.findById(jobId);
-    if (!refreshed) return;
+  async dispatch(job: Job, workerId: string) {
 
-    const payloadUrl = await this.minio.presignGet(refreshed.objectKey);
-    let verifierUrl: string | undefined;
-    if (
-      refreshed.verification === VerificationMethod.USER_PROGRAM &&
-      refreshed.verifierObjectKey
-    ) {
-      verifierUrl = await this.minio.presignGet(refreshed.verifierObjectKey);
-    }
+    const payloadUrl = await this.minio.presignGet(job.objectKey);
 
     const j: WorkerJobPayload = {
-      jobId: refreshed.id,
-      jobType: refreshed.jobType,
-      objectKey: refreshed.objectKey,
-      entryCommand: refreshed.entryCommand ?? undefined,
-      verification: refreshed.verification,
-      verifierObjectKey: refreshed.verifierObjectKey ?? undefined,
-      verifierCommand: refreshed.verifierCommand ?? undefined,
+      jobId: job.id,
+      jobType: job.jobType,
+      objectKey: job.objectKey,
+      entryCommand: job.entryCommand ?? undefined,
       payloadUrl,
-      verifierUrl,
-      outputPrefix: `outputs/${refreshed.id}/`,
+      outputPrefix: `outputs/${job.id}/`,
       status: 'SCHEDULED',
       workerId,
     };
     this.jobs.set(j.jobId, j);
     this.getOrCreateStream(workerId).next(j);
-    return j;
-  }
-  async pullJob(workerId: string): Promise<WorkerJobPayload | undefined> {
-    const w = await this.prisma.worker.findUnique({ where: { id: workerId } });
-    if (!w) return;
-
-    // First use DB-backed scheduling to fetch one job
-    const dbJob = await this.jobsSvc.nextSchedulable();
-    if (!dbJob) return;
-    await this.jobsSvc.markScheduled(dbJob.id, workerId);
-
-    // Presign payload and optional verifier for convenience
-    const payloadUrl = await this.minio.presignGet(dbJob.objectKey);
-    let verifierUrl: string | undefined;
-    if (
-      dbJob.verification === VerificationMethod.USER_PROGRAM &&
-      dbJob.verifierObjectKey
-    ) {
-      verifierUrl = await this.minio.presignGet(dbJob.verifierObjectKey);
-    }
-
-    const j: WorkerJobPayload = {
-      jobId: dbJob.id,
-      jobType: dbJob.jobType,
-      objectKey: dbJob.objectKey,
-      entryCommand: dbJob.entryCommand ?? undefined,
-      verification: dbJob.verification,
-      verifierObjectKey: dbJob.verifierObjectKey ?? undefined,
-      verifierCommand: dbJob.verifierCommand ?? undefined,
-      payloadUrl,
-      verifierUrl,
-      outputPrefix: `outputs/${dbJob.id}/`,
-      status: 'SCHEDULED',
-      workerId,
-    };
-    this.jobs.set(j.jobId, j);
     return j;
   }
   async report(
@@ -178,7 +122,26 @@ export class WorkersService {
     j.metricsJson = metricsJson;
     j.status = ok ? 'DONE' : 'FAILED';
     this.jobs.set(jobId, j);
+    // Persist status first
     await this.jobsSvc.markResult(jobId, ok);
+    // If solution is provided, persist it to MinIO and store object key in DB
+    try {
+      if (solution && solution.length > 0) {
+        const resultKey = `outputs/${jobId}/result.txt`;
+        await this.minio.putObject(
+          resultKey,
+          solution,
+          'text/plain; charset=utf-8',
+        );
+        await this.jobsSvc.setOutputKey(jobId, resultKey);
+      }
+    } catch (e) {
+      // Best-effort: do not fail the report if upload/storage fails
+      // eslint-disable-next-line no-console
+      console.warn(
+        `Upload result failed for job ${jobId}: ${(e as Error)?.message}`,
+      );
+    }
     return true;
   }
 
@@ -190,5 +153,10 @@ export class WorkersService {
   }
   listJobsByWorker(workerId: string) {
     return [...this.jobs.values()].filter((j) => j.workerId === workerId);
+  }
+
+  // Get a specific in-memory job payload by jobId (if present)
+  getJob(jobId: string) {
+    return this.jobs.get(jobId);
   }
 }

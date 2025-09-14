@@ -5,46 +5,111 @@ import {
   NotFoundException,
   Param,
   Post,
+  Inject,
+  forwardRef,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { JobsService } from './jobs.service';
-import type { CreateJobDto } from './jobs.service';
-import { VerificationMethod } from '@prisma/client';
+import { VerificationMethod, Prisma } from '@prisma/client';
 import { MinioService } from '../minio/minio.service';
+import { WorkersService } from '../workers/workers.service';
+import { UsersService } from '../users/users.service';
 
 @Controller('jobs')
 export class JobsController {
   constructor(
     private readonly jobs: JobsService,
+    private readonly users: UsersService,
     private readonly minio: MinioService,
+    @Inject(forwardRef(() => WorkersService))
+    private readonly workers: WorkersService,
   ) {}
+  
 
   @Get()
   list() {
     return this.jobs.list();
   }
 
+  @Get('user')
+  listByUser(@Query('userId') userId?: string) {
+    // List jobs for a given user id (wallet string) via query param only.
+    if (!userId || !userId.trim()) {
+      throw new BadRequestException('userId query param is required');
+    }
+    const uid = userId.trim().toLowerCase();
+    return this.jobs.jobsByUser(uid);
+  }
+
+  @Get(':id')
+  async getById(@Param('id') id: string) {
+    const job = await this.jobs.findById(id);
+    if (!job) throw new NotFoundException('Job not found');
+    // Merge in any in-memory runtime fields (solution/metrics/status) if available
+    const runtime = this.workers.getJob(id);
+    const result: any = { ...job };
+    if (runtime) {
+      result.status = runtime.status as any;
+      if (runtime.workerId) result.workerId = runtime.workerId;
+      if (runtime.solution) result.solution = runtime.solution;
+      if (runtime.metricsJson) result.metricsJson = runtime.metricsJson;
+    }
+    // If an output object exists, attach a temporary public GET URL for convenience
+    if ((job as any).outputObjectKey) {
+      try {
+        result.outputGetUrl = await this.minio.presignGet(
+          (job as any).outputObjectKey,
+          3600,
+          { public: true },
+        );
+      } catch {
+        // ignore presign error, leave url undefined
+      }
+    }
+    return result;
+  }
+
   @Post()
-  async create(@Body() body: CreateJobDto) {
+  async create(
+    @Body()
+    body: Prisma.JobUncheckedCreateInput & { userWallet: string },
+  ) {
+    const { userWallet, ...jobInput } = body;
+    if (!userWallet || typeof userWallet !== 'string' || !userWallet.trim()) {
+      throw new BadRequestException('userWallet (wallet address) is required');
+    }
     // Verify primary job payload exists in MinIO
     try {
-      await this.minio.stat(body.objectKey);
+      await this.minio.stat(jobInput.objectKey);
     } catch {
-      throw new NotFoundException('MinIO object not found: ' + body.objectKey);
+      throw new NotFoundException('MinIO object not found: ' + jobInput.objectKey);
     }
     // If requesting user-program verification, the verifier assets should exist too
     if (
-      body.verification === VerificationMethod.USER_PROGRAM &&
-      body.verifierObjectKey
+      jobInput.verification === VerificationMethod.USER_PROGRAM &&
+      jobInput.verifierObjectKey
     ) {
       try {
-        await this.minio.stat(body.verifierObjectKey);
+        await this.minio.stat(jobInput.verifierObjectKey);
       } catch {
         throw new NotFoundException(
-          'Verifier object not found: ' + body.verifierObjectKey,
+          'Verifier object not found: ' + jobInput.verifierObjectKey,
         );
       }
     }
-    return this.jobs.create(body);
+    // If a user wallet is provided, upsert user and attach to job
+    const createInput: Prisma.JobUncheckedCreateInput = { ...jobInput } as any;
+    if (userWallet && typeof userWallet === 'string' && userWallet.trim()) {
+      const user = await this.users.upsert(userWallet);
+      (createInput as any).userId = user.id;
+    }
+    delete (createInput as any).userWallet;
+
+    const job = await this.jobs.create(createInput);
+    await this.workers.dispatch(job, jobInput.workerId);
+    await this.jobs.markScheduled(job.id, jobInput.workerId!);
+    return job;
   }
 
   @Post('presign')

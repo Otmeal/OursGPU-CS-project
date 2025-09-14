@@ -11,9 +11,11 @@ CREATE TABLE "public"."Job" (
     "jobType" TEXT NOT NULL,
     "status" "public"."JobStatus" NOT NULL DEFAULT 'REQUESTED',
     "objectKey" TEXT NOT NULL,
+    "outputObjectKey" TEXT,
     "metadata" JSONB,
     "priority" INTEGER NOT NULL DEFAULT 0,
-    "assignedWorkerId" TEXT,
+    "workerId" TEXT NOT NULL,
+    "userId" TEXT,
     "entryCommand" TEXT,
     "verification" "public"."VerificationMethod" NOT NULL DEFAULT 'BUILTIN_HASH',
     "verifierObjectKey" TEXT,
@@ -36,3 +38,24 @@ CREATE TABLE "public"."Worker" (
 
     CONSTRAINT "Worker_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateTable
+CREATE TABLE "public"."User" (
+    "id" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "Job_workerId_idx" ON "public"."Job"("workerId");
+
+-- CreateIndex
+CREATE INDEX "Job_userId_idx" ON "public"."Job"("userId");
+
+-- AddForeignKey
+ALTER TABLE "public"."Job" ADD CONSTRAINT "Job_workerId_fkey" FOREIGN KEY ("workerId") REFERENCES "public"."Worker"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."Job" ADD CONSTRAINT "Job_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE SET NULL ON UPDATE CASCADE;

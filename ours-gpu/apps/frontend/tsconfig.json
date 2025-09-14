@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,                // ✅ 允許 CJS 當成 default 匯入
+    "allowSyntheticDefaultImports": true    // （型別檢查層面的放寬，與上者擇一也可）
+  },
+  "extends": "./.nuxt/tsconfig.json"
+}
