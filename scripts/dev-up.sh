@@ -60,6 +60,9 @@ info "Building contracts"
   forge build -q
 )
 
+# Sync ABI into shared library for TS imports
+"$ROOT_DIR/scripts/sync-abi.sh" || true
+
 info "Deriving deployer private key (index=$DEPLOYER_INDEX)"
 DEPLOYER_PK=$(cast wallet private-key --mnemonic "$MNEMONIC" --mnemonic-index "$DEPLOYER_INDEX" | tr -d '\r\n')
 if [[ ! "$DEPLOYER_PK" =~ ^0x[0-9a-fA-F]{64}$ ]]; then
@@ -107,7 +110,7 @@ info "Deploying OrgRegistry"
 ORG_REGISTRY=$(deploy "src/OrgRegistry.sol:OrgRegistry" "$ACCESS_MANAGER")
 
 info "Deploying JobManager"
-JOB_MANAGER=$(deploy "src/JobManager.sol:JobManager" "$ACCESS_MANAGER" "$OCU_TOKEN" "$ORG_REGISTRY" "$CONTROLLER_LICENSE" "$WORKER_MANAGER")
+JOB_MANAGER=$(deploy "src/JobManager.sol:JobManager" "$ACCESS_MANAGER" "$OCU_TOKEN" "$CONTROLLER_LICENSE" "$ORG_REGISTRY" "$WORKER_MANAGER")
 
 mkdir -p "$(dirname "$ENV_CONTRACTS_FILE")"
 cat > "$ENV_CONTRACTS_FILE" <<EOF
@@ -139,9 +142,10 @@ info "Configuring OrgRegistry permissions (registerOrg/assignUser/assignNode)"
 REGORG_SEL=$(cast sig "registerOrg(uint256,uint256,uint256,string)")
 ASSIGN_USER_SEL=$(cast sig "assignUser(address,uint256)")
 ASSIGN_NODE_SEL=$(cast sig "assignNode(address,uint256)")
+UPDATE_PARAMS_SEL=$(cast sig "updateOrgParams(uint256,uint256,uint256)")
 cast send "$ACCESS_MANAGER" \
   "setTargetFunctionRole(address,bytes4[],uint64)" \
-  "$ORG_REGISTRY" "[$REGORG_SEL,$ASSIGN_USER_SEL,$ASSIGN_NODE_SEL]" 0 \
+  "$ORG_REGISTRY" "[$REGORG_SEL,$ASSIGN_USER_SEL,$ASSIGN_NODE_SEL,$UPDATE_PARAMS_SEL]" 0 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 # Create organizations
@@ -149,14 +153,25 @@ cast send "$ACCESS_MANAGER" \
 ROOT_NAME="root"
 UNI1_NAME="university1"
 LAB1_NAME="lab1"
-BASE_RATE=100
-MARKUP=10
+
+# Optional per-org overrides for pricing parameters; default to BASE_RATE/MARKUP
+ORG1_BASE_RATE="${ORG1_BASE_RATE:-100}"
+ORG1_MARKUP="${ORG1_MARKUP:-20}"
+ORG2_BASE_RATE="${ORG2_BASE_RATE:-150}"
+ORG2_MARKUP="${ORG2_MARKUP:-30}"
 
 info "Registering org: $UNI1_NAME (child of virtual root 0)"
-cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 0 "$BASE_RATE" "$MARKUP" "$UNI1_NAME" \
+cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 0 "$ORG1_BASE_RATE" "$ORG1_MARKUP" "$UNI1_NAME" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 info "Registering org: $LAB1_NAME (child of university1)"
-cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 1 "$BASE_RATE" "$MARKUP" "$LAB1_NAME" \
+cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 1 "$ORG2_BASE_RATE" "$ORG2_MARKUP" "$LAB1_NAME" \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+
+# Update pricing parameters for each organization as needed
+info "Updating OrgRegistry pricing parameters"
+cast send "$ORG_REGISTRY" "updateOrgParams(uint256,uint256,uint256)" 1 "$ORG1_BASE_RATE" "$ORG1_MARKUP" \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+cast send "$ORG_REGISTRY" "updateOrgParams(uint256,uint256,uint256)" 2 "$ORG2_BASE_RATE" "$ORG2_MARKUP" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 # Bootstrap permissions and initial state: mint controller NFT and stake workers
@@ -183,13 +198,16 @@ cast send "$CONTROLLER_LICENSE" \
   "mintController(address,string)" "$CONTROLLER_ADDR" "ipfs://controller1" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
-FUND_AMT=1000000000000000000000   # 1,000 OCU with 18 decimals
+FUND_AMT=10000000000000000000000   # 10,000 OCU with 18 decimals
 STAKE_AMT=100000000000000000000   # 100 OCU with 18 decimals
 
 info "Funding workers with OCU"
 cast send "$OCU_TOKEN" "transfer(address,uint256)" "$WORKER1_ADDR" "$FUND_AMT" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 cast send "$OCU_TOKEN" "transfer(address,uint256)" "$WORKER2_ADDR" "$FUND_AMT" \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+
+cast send "$OCU_TOKEN" "transfer(address,uint256)" "$TEST_USER_ADDR" "$FUND_AMT" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 info "Workers approving and staking to WorkerManager"
@@ -211,7 +229,7 @@ cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$WORKER1_ADDR" 1 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$WORKER2_ADDR" 2 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
-cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$TEST_USER_ADDR" 1 \
+cast send "$ORG_REGISTRY" "assignUser(address,uint256)" "$TEST_USER_ADDR" 1 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 info "Starting controller, workers, and frontend (Nuxt) with contract env"

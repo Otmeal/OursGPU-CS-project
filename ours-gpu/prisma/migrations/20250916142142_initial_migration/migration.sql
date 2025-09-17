@@ -30,6 +30,8 @@ CREATE TABLE "public"."Job" (
 CREATE TABLE "public"."Worker" (
     "id" TEXT NOT NULL,
     "orgId" TEXT NOT NULL,
+    "orgName" TEXT,
+    "wallet" TEXT,
     "concurrency" INTEGER NOT NULL,
     "running" INTEGER NOT NULL DEFAULT 0,
     "lastSeen" TIMESTAMP(3) NOT NULL,

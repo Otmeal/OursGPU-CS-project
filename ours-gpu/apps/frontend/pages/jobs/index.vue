@@ -12,7 +12,7 @@
       <v-btn color="primary" class="ml-3" :loading="pending" @click="connect">Connect Wallet</v-btn>
     </v-alert>
 
-    <div class="d-flex flex-wrap gap-4 align-end mb-4">
+    <div class="d-flex flex-wrap gap-4 align-center mb-4">
       <v-text-field
         v-model="addressDisplay"
         label="Wallet"

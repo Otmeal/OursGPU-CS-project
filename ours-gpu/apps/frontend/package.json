@@ -6,10 +6,11 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
-    "preview": "nuxt preview",
-    "postinstall": "node node_modules/nuxt/bin/nuxt.mjs prepare"
+    "preview": "nuxt preview"
   },
   "dependencies": {
+    "ethers": "^6.13.2",
+    "viem": "^2.21.21",
     "@pinia/nuxt": "^0.11.2",
     "@tanstack/vue-query": "^5.56.0",
     "nuxt": "^4.1.1",

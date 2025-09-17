@@ -54,6 +54,8 @@ model Job {
 model Worker {
   id          String   @id @db.Text
   orgId       String
+  orgName     String?
+  wallet      String?  @db.Text
   concurrency Int
   running     Int      @default(0)
   lastSeen    DateTime

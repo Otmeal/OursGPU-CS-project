@@ -16,8 +16,9 @@ WORKDIR /app
 FROM base AS deps
 # 盡量利用快取：先放 lockfile 與 workspace 定義
 COPY ../../ ./
-# 安裝完整依賴（含 dev，用於 build）
-RUN pnpm install --frozen-lockfile
+# 安裝完整依賴（含 dev，用於 build）；Prisma 生成以顯式指令執行
+RUN pnpm install --frozen-lockfile \
+  && pnpm prisma generate
 
 ############################
 # Build the controller

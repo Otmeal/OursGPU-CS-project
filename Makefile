@@ -10,8 +10,8 @@ dev-du:
 	$(MAKE) dev-up
 
 dev-dbu:
-	$(MAKE) dev-build
 	$(MAKE) dev-down
+	$(MAKE) dev-build
 	$(MAKE) dev-up
 
 dev-test:

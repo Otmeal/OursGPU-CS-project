@@ -22,7 +22,8 @@ This contract calculate the fee to use a node.
 - Token escrow for job rewards (ERC20).
 - Requires licensed controller for job status updates.
 - Requires staked worker (via WorkerManager) to submit solutions.
-- Integrates with `OrgRegistry` to compute dynamic fees.
+- Enforces that job rewards match `OrgRegistry.calculateFee()` for the requester/worker pair.
+- Deducts `PLATFORM_FEE_BPS` from the escrowed reward when paying the worker and tracks the fee balance on-chain.
 
 ## Deployment Notes
 

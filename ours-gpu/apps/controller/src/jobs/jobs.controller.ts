@@ -15,6 +15,7 @@ import { VerificationMethod, Prisma } from '@prisma/client';
 import { MinioService } from '../minio/minio.service';
 import { WorkersService } from '../workers/workers.service';
 import { UsersService } from '../users/users.service';
+import { JobManagerChainService } from '../chain/job-manager.service';
 
 @Controller('jobs')
 export class JobsController {
@@ -24,6 +25,7 @@ export class JobsController {
     private readonly minio: MinioService,
     @Inject(forwardRef(() => WorkersService))
     private readonly workers: WorkersService,
+    private readonly jmChain: JobManagerChainService,
   ) {}
   
 
@@ -110,6 +112,69 @@ export class JobsController {
     await this.workers.dispatch(job, jobInput.workerId);
     await this.jobs.markScheduled(job.id, jobInput.workerId!);
     return job;
+  }
+
+  // Controller-signed EIP-712 approval for user-sent on-chain job creation
+  @Post('sign-create')
+  async signCreate(
+    @Body()
+    body: {
+      requester: string;
+      orgId?: number | string; // optional; will be resolved from chain if not provided
+      target?: string;
+      difficulty?: number | string;
+      reward: string | number; // integer token units (will be ignored if quote flow is used)
+      worker: string; // EVM address of worker
+      deadline?: number; // unix seconds
+      nonce?: string | number; // optional override
+    },
+  ) {
+    const requester = (body.requester || '').toLowerCase();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(requester)) {
+      throw new BadRequestException('invalid requester address');
+    }
+    const worker = (body.worker || '').toLowerCase();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(worker)) {
+      throw new BadRequestException('invalid worker address');
+    }
+    // Resolve orgId from chain if not provided or invalid
+    let orgId = BigInt(0);
+    try {
+      if (body.orgId !== undefined && !Number.isNaN(Number(body.orgId))) {
+        orgId = BigInt(Number(body.orgId));
+      } else {
+        orgId = await this.jmChain.getUserOrg(requester as any);
+      }
+    } catch {}
+    const target = (body.target && /^0x[0-9a-fA-F]{64}$/.test(body.target))
+      ? (body.target as `0x${string}`)
+      : ("0x" + '0'.repeat(64)) as `0x${string}`;
+    const difficulty = BigInt(Number(body.difficulty ?? 0));
+    const reward = BigInt(body.reward);
+    const deadline = BigInt(body.deadline ?? Math.floor(Date.now() / 1000) + 3600);
+    const nonce = body.nonce !== undefined ? BigInt(body.nonce) : undefined;
+
+    const { signature, params, chainId } = await this.jmChain.signCreateJob({
+      requester: requester as `0x${string}`,
+      orgId,
+      target,
+      difficulty,
+      reward,
+      worker: worker as `0x${string}`,
+      deadline,
+      nonce,
+    } as any);
+    return {
+      signature,
+      params,
+      domain: {
+        name: 'JobManager',
+        version: '1',
+        chainId,
+        verifyingContract: this.jmChain.getAddress(),
+      },
+      controller: this.jmChain.getControllerAddress(),
+    };
   }
 
   @Post('presign')

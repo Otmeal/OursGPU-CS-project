@@ -1,4 +1,5 @@
 import { defineNuxtConfig } from 'nuxt/config'
+import { fileURLToPath } from 'node:url'
 import vuetify from 'vite-plugin-vuetify'
 
 export default defineNuxtConfig({
@@ -18,6 +19,18 @@ export default defineNuxtConfig({
 
   vite: {
     ssr: { noExternal: ['vuetify'] },
-    plugins: [vuetify()]
-  }
+    plugins: [vuetify()],
+    resolve: {
+      alias: {
+        '@ours-gpu/shared': fileURLToPath(new URL('../../libs/shared/src', import.meta.url)),
+      },
+    },
+  },
+
+  runtimeConfig: {
+    public: {
+      jobManagerAddress: process.env.NUXT_PUBLIC_JOB_MANAGER_ADDRESS || process.env.JOB_MANAGER_ADDRESS || '',
+      tokenAddress: process.env.NUXT_PUBLIC_TOKEN_ADDRESS || process.env.OCU_TOKEN_ADDRESS || '',
+    },
+  },
 })

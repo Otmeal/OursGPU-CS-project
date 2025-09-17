@@ -237,6 +237,7 @@ export class GrpcService {
         concurrency,
         lastSeen: Date.now(),
         running: 0,
+        wallet,
       });
       return { ok: true, note: 'registered' };
     } catch (e) {

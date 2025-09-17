@@ -4,6 +4,7 @@ import { MinioService } from '../minio/minio.service';
 import { Job } from '@prisma/client';
 import { Observable, ReplaySubject } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { JobManagerChainService } from '../chain/job-manager.service';
 
 type Worker = {
   id: string;
@@ -37,30 +38,59 @@ export class WorkersService {
   private jobQueue: WorkerJobPayload[] = [];
   private jobs = new Map<string, WorkerJobPayload>();
   private streams = new Map<string, ReplaySubject<WorkerJobPayload>>();
+  private workerWallets = new Map<string, string>();
 
   constructor(
     private readonly jobsSvc: JobsService,
     private readonly minio: MinioService,
     private readonly prisma: PrismaService,
+    private readonly jmChain: JobManagerChainService,
   ) {}
 
-  async register(w: Worker) {
+  async register(w: Worker & { wallet?: string }) {
+    // Resolve canonical orgId (numeric) and name from chain if wallet is present
+    let resolvedOrgId: bigint | null = null;
+    let resolvedOrgName: string | null = null;
+    const wallet = w.wallet && /^0x[0-9a-fA-F]{40}$/.test(w.wallet)
+      ? (w.wallet.toLowerCase())
+      : undefined;
+    if (wallet) {
+      try {
+        const org = await this.jmChain.getNodeOrg(wallet as any);
+        if (org && org > 0n) {
+          resolvedOrgId = org;
+          try {
+            const info = await this.jmChain.getOrgInfo(org);
+            if (info && info.name) resolvedOrgName = info.name;
+          } catch {}
+        }
+      } catch {}
+    }
+    // Fallback: accept only pure numeric orgId strings; strip any prefixes
+    const numericOrgId = /^\d+$/.test(String(w.orgId)) ? String(w.orgId) : undefined;
     await this.prisma.worker.upsert({
       where: { id: w.id },
       create: {
         id: w.id,
-        orgId: w.orgId,
+        orgId: resolvedOrgId ? resolvedOrgId.toString() : (numericOrgId ?? '0'),
+        orgName: resolvedOrgName ?? undefined,
+        wallet: wallet ?? undefined,
         concurrency: w.concurrency,
         running: w.running,
         lastSeen: new Date(w.lastSeen || Date.now()),
       },
       update: {
-        orgId: w.orgId,
+        orgId: resolvedOrgId ? resolvedOrgId.toString() : (numericOrgId ?? '0'),
+        orgName: resolvedOrgName ?? undefined,
+        wallet: wallet ?? undefined,
         concurrency: w.concurrency,
         running: w.running,
         lastSeen: new Date(),
       },
     });
+    if (wallet) {
+      this.workerWallets.set(w.id, wallet);
+    }
   }
   async heartbeat(id: string, running: number) {
     try {
@@ -124,6 +154,25 @@ export class WorkersService {
     this.jobs.set(jobId, j);
     // Persist status first
     await this.jobsSvc.markResult(jobId, ok);
+    // On success, attempt to finalize on-chain payout if chainJobId is present in metadata
+    try {
+      if (ok) {
+        const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+        const meta: any = job?.metadata as any;
+        const chainJobId = meta?.chainJobId ?? meta?.chain?.jobId;
+        if (chainJobId !== undefined && chainJobId !== null) {
+          const idBig = BigInt(chainJobId);
+          // Fire and forget
+          this.jmChain
+            .completeJob(idBig)
+            .catch((e) =>
+              console.warn(`completeJob failed for ${chainJobId}: ${e?.message}`),
+            );
+        }
+      }
+    } catch (e) {
+      // best-effort
+    }
     // If solution is provided, persist it to MinIO and store object key in DB
     try {
       if (solution && solution.length > 0) {
@@ -146,7 +195,22 @@ export class WorkersService {
   }
 
   listWorkers() {
-    return this.prisma.worker.findMany({ orderBy: { lastSeen: 'desc' } });
+    // Merge persisted workers with ephemeral wallet mapping for convenience; prefer live map when present
+    return this.prisma.worker
+      .findMany({ orderBy: { lastSeen: 'desc' } })
+      .then((list) =>
+        list.map((w) => {
+          const m = /^org-(\d+)$/.exec(String(w.orgId || ''));
+          const cleanOrgId = /^\d+$/.test(String(w.orgId))
+            ? String(w.orgId)
+            : (m ? m[1] : String(w.orgId || '0'));
+          return {
+            ...w,
+            orgId: cleanOrgId,
+            wallet: this.workerWallets.get(w.id) || w.wallet || null,
+          } as any;
+        }),
+      );
   }
   listJobs() {
     return [...this.jobs.values()];

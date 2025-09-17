@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { ControllerModule } from './controller.module';
 import { join } from 'path';
@@ -12,10 +13,16 @@ async function bootstrap() {
     process.env.NODE_ENV === 'production'
       ? ['log', 'error', 'warn']
       : ['log', 'error', 'warn', 'debug', 'verbose'];
-  const app = await NestFactory.create(ControllerModule, {
+  const app = await NestFactory.create<NestExpressApplication>(ControllerModule, {
     cors: true,
     logger: logLevels,
   });
+
+  // Globally convert BigInt values to strings in JSON responses
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('json replacer', (_key: string, value: unknown) =>
+    typeof value === 'bigint' ? value.toString() : value,
+  );
 
   // 決定 .proto 路徑（優先 dist，否則退回原始碼路徑）
   const protoCandidates = [

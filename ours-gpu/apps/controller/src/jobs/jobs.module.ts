@@ -5,11 +5,13 @@ import { JobsController } from './jobs.controller';
 import { MinioService } from '../minio/minio.service';
 import { WorkersModule } from '../workers/workers.module';
 import { UsersModule } from '../users/users.module';
+import { ChainModule } from '@ours-gpu/shared';
+import { JobManagerChainService } from '../chain/job-manager.service';
 
 @Module({
-  imports: [forwardRef(() => WorkersModule), UsersModule],
-  providers: [PrismaService, JobsService, MinioService],
+  imports: [forwardRef(() => WorkersModule), UsersModule, ChainModule],
+  providers: [PrismaService, JobsService, MinioService, JobManagerChainService],
   controllers: [JobsController],
-  exports: [JobsService, MinioService, PrismaService],
+  exports: [JobsService, MinioService, PrismaService, JobManagerChainService],
 })
 export class JobsModule {}

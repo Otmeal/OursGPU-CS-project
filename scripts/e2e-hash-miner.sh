@@ -8,7 +8,7 @@ set -euo pipefail
 # - Waits for completion and verifies the solution
 
 BASE_URL=${CONTROLLER_HTTP:-http://localhost:3000}
-ORG_ID=${ORG_ID:-org-1}
+ORG_ID=${ORG_ID:-0}
 JOB_TYPE=${JOB_TYPE:-hash_mining}
 VERIFICATION=${VERIFICATION:-BUILTIN_HASH}
 SEED=${SEED:-hello-oursgpu}

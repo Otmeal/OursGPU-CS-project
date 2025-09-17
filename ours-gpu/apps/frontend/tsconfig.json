@@ -1,8 +1,11 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
+    "resolveJsonModule": true,
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@ours-gpu/shared": ["../../libs/shared/src"],
+      "@ours-gpu/shared/*": ["../../libs/shared/src/*"]
     },
     "moduleResolution": "Bundler",
     "esModuleInterop": true,                // ✅ 允許 CJS 當成 default 匯入

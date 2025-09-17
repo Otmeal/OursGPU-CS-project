@@ -117,7 +117,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
         `gRPC client introspection failed: ${e?.message ?? String(err)}`,
       );
     }
-    const orgId = process.env.ORG_ID ?? 'org-1';
+    const orgId = process.env.ORG_ID ?? '0';
     const concurrency = Number.parseInt(process.env.CONCURRENCY ?? '1', 10);
     const heartbeatMs = Number.parseInt(process.env.HEARTBEAT_MS ?? '2000', 10);
 
@@ -149,7 +149,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
         if (this.registered)
           this.logger.warn('Heartbeat not accepted; re-registering');
         this.registered = false;
-        const orgId = process.env.ORG_ID ?? 'org-1';
+        const orgId = process.env.ORG_ID ?? '1';
         const concurrency = Number.parseInt(process.env.CONCURRENCY ?? '1', 10);
         this.ensureRegisterLoop(orgId, concurrency);
       }

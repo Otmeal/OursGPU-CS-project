@@ -25,13 +25,24 @@ contract OrgRegistry is AccessManaged {
     /// @notice Mapping from node address to organization ID
     mapping(address => uint256) public nodeOrganizations;
 
+    /// @notice ERC20 token decimals used for fee scaling
+    /// @dev If unset (0), fees are returned in whole-token units (no scaling)
+    uint8 public tokenDecimals = 18;
+
     event OrgRegistered(uint256 indexed orgId, uint256 parentOrg, string name);
     event UserAssigned(address indexed user, uint256 indexed orgId);
     event NodeAssigned(address indexed node, uint256 indexed orgId);
+    event OrgParamsUpdated(uint256 indexed orgId, uint256 baseRate, uint256 perLevelMarkup);
 
     /// @notice Constructor that sets the manager address for AccessManaged
     /// @param manager The address with management permissions
     constructor(address manager) AccessManaged(manager) {}
+
+    /// @notice Set the ERC20 token decimals used to scale calculated fees
+    /// @param decimals_ Decimals of the reward token (e.g., 18 for standard ERC20)
+    function setTokenDecimals(uint8 decimals_) external restricted {
+        tokenDecimals = decimals_;
+    }
 
     /// @notice Register a new organization
     /// @param parentOrg ID of the parent organization (0 if root)
@@ -68,6 +79,17 @@ contract OrgRegistry is AccessManaged {
         require(bytes(organizations[orgId].name).length != 0, "OrgRegistry: organization does not exist");
         nodeOrganizations[node] = orgId;
         emit NodeAssigned(node, orgId);
+    }
+
+    /// @notice Update pricing parameters for an organization
+    /// @param orgId The organization ID to update
+    /// @param baseRate The new base rate
+    /// @param perLevelMarkup The new per-level markup
+    function updateOrgParams(uint256 orgId, uint256 baseRate, uint256 perLevelMarkup) external restricted {
+        require(bytes(organizations[orgId].name).length != 0, "OrgRegistry: organization does not exist");
+        organizations[orgId].baseRate = baseRate;
+        organizations[orgId].perLevelMarkup = perLevelMarkup;
+        emit OrgParamsUpdated(orgId, baseRate, perLevelMarkup);
     }
 
     /// @notice Retrieve the full hierarchy for a given organization ID
@@ -149,6 +171,9 @@ contract OrgRegistry is AccessManaged {
     /// @dev Calculate the fee for a user based on their organization and the node's organization. The node to its parent organization is counted one hops.
     function calculateFee(uint256 userOrg, uint256 nodeOrg) external view returns (uint256) {
         uint256 dist = getDistanceToLCA(nodeOrg, userOrg);
-        return organizations[nodeOrg].baseRate + organizations[nodeOrg].perLevelMarkup * (dist + 1);
+        uint256 feeUnits = organizations[nodeOrg].baseRate + organizations[nodeOrg].perLevelMarkup * (dist);
+        // Scale by token decimals to return smallest-unit amount when configured
+        if (tokenDecimals == 0) return feeUnits;
+        return feeUnits * (10 ** uint256(tokenDecimals));
     }
 }
