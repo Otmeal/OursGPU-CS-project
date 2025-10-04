@@ -4,6 +4,7 @@ volumes:
   controller_node_modules:
   worker1_node_modules:
   worker2_node_modules:
+  worker3_node_modules:
   frontend_node_modules:
   pgdata_dev:
   minio_data_dev:
@@ -167,6 +168,41 @@ services:
       CHAIN_ID: "31337"
       WALLET_MNEMONIC: test test test test test test test test test test test junk
       WALLET_INDEX: "2"
+    env_file:
+      - ./ours-gpu/.env.contracts
+    depends_on:
+      controller1:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      minio:
+        condition: service_started
+      anvil:
+        condition: service_started
+    tty: true
+    stdin_open: true
+
+  worker3:
+    build:
+      context: ./ours-gpu
+      dockerfile: ./apps/worker/Dockerfile.dev
+    container_name: oursgpu-worker3-dev
+    working_dir: /app
+    volumes:
+      - ./ours-gpu:/app
+      - pnpm-store:/root/.pnpm-store
+      - worker3_node_modules:/app/node_modules
+    command: >
+      sh -lc "pnpm install \
+      && pnpm exec nest start worker --watch"
+    environment:
+      NODE_ENV: development
+      CONTROLLER_GRPC: controller1:50051
+      WORKER_ID: worker3
+      CHAIN_RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      WALLET_MNEMONIC: test test test test test test test test test test test junk
+      WALLET_INDEX: "4"
     env_file:
       - ./ours-gpu/.env.contracts
     depends_on:

@@ -19,6 +19,7 @@ DEPLOYER_INDEX="${DEPLOYER_INDEX:-${WALLET_INDEX:-0}}"
 CONTROLLER1_INDEX="${CONTROLLER1_INDEX:-0}"
 WORKER1_INDEX="${WORKER1_INDEX:-1}"
 WORKER2_INDEX="${WORKER2_INDEX:-2}"
+WORKER3_INDEX="${WORKER3_INDEX:-4}"
 TEST_USER_INDEX="${TEST_USER_INDEX:-3}"
 
 info() { echo "[dev-up] $*"; }
@@ -136,7 +137,7 @@ printf "%s\n" \
   "JOB_MANAGER=$JOB_MANAGER"
 
 # -----------------------------------------------------------------------------
-# Org tree setup (root -> university1 -> lab1) and membership assignment
+# Org tree setup (root -> university1 -> lab1, root -> university2 -> lab2) and membership assignment
 # -----------------------------------------------------------------------------
 info "Configuring OrgRegistry permissions (registerOrg/assignUser/assignNode)"
 REGORG_SEL=$(cast sig "registerOrg(uint256,uint256,uint256,string)")
@@ -153,12 +154,18 @@ cast send "$ACCESS_MANAGER" \
 ROOT_NAME="root"
 UNI1_NAME="university1"
 LAB1_NAME="lab1"
+UNI2_NAME="university2"
+LAB2_NAME="lab2"
 
 # Optional per-org overrides for pricing parameters; default to BASE_RATE/MARKUP
 ORG1_BASE_RATE="${ORG1_BASE_RATE:-100}"
 ORG1_MARKUP="${ORG1_MARKUP:-20}"
 ORG2_BASE_RATE="${ORG2_BASE_RATE:-150}"
 ORG2_MARKUP="${ORG2_MARKUP:-30}"
+ORG3_BASE_RATE="${ORG3_BASE_RATE:-120}"
+ORG3_MARKUP="${ORG3_MARKUP:-25}"
+ORG4_BASE_RATE="${ORG4_BASE_RATE:-180}"
+ORG4_MARKUP="${ORG4_MARKUP:-35}"
 
 info "Registering org: $UNI1_NAME (child of virtual root 0)"
 cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 0 "$ORG1_BASE_RATE" "$ORG1_MARKUP" "$UNI1_NAME" \
@@ -166,12 +173,22 @@ cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 0 "$ORG1
 info "Registering org: $LAB1_NAME (child of university1)"
 cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 1 "$ORG2_BASE_RATE" "$ORG2_MARKUP" "$LAB1_NAME" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+info "Registering org: $UNI2_NAME (child of virtual root 0)"
+cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 0 "$ORG3_BASE_RATE" "$ORG3_MARKUP" "$UNI2_NAME" \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+info "Registering org: $LAB2_NAME (child of university2)"
+cast send "$ORG_REGISTRY" "registerOrg(uint256,uint256,uint256,string)" 3 "$ORG4_BASE_RATE" "$ORG4_MARKUP" "$LAB2_NAME" \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 # Update pricing parameters for each organization as needed
 info "Updating OrgRegistry pricing parameters"
 cast send "$ORG_REGISTRY" "updateOrgParams(uint256,uint256,uint256)" 1 "$ORG1_BASE_RATE" "$ORG1_MARKUP" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 cast send "$ORG_REGISTRY" "updateOrgParams(uint256,uint256,uint256)" 2 "$ORG2_BASE_RATE" "$ORG2_MARKUP" \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+cast send "$ORG_REGISTRY" "updateOrgParams(uint256,uint256,uint256)" 3 "$ORG3_BASE_RATE" "$ORG3_MARKUP" \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+cast send "$ORG_REGISTRY" "updateOrgParams(uint256,uint256,uint256)" 4 "$ORG4_BASE_RATE" "$ORG4_MARKUP" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 # Bootstrap permissions and initial state: mint controller NFT and stake workers
@@ -188,10 +205,12 @@ cast send "$ACCESS_MANAGER" \
 CONTROLLER_ADDR=$(cast wallet address --mnemonic "$MNEMONIC" --mnemonic-index "$CONTROLLER1_INDEX")
 WORKER1_ADDR=$(cast wallet address --mnemonic "$MNEMONIC" --mnemonic-index "$WORKER1_INDEX")
 WORKER2_ADDR=$(cast wallet address --mnemonic "$MNEMONIC" --mnemonic-index "$WORKER2_INDEX")
+WORKER3_ADDR=$(cast wallet address --mnemonic "$MNEMONIC" --mnemonic-index "$WORKER3_INDEX")
 WORKER1_PK=$(cast wallet private-key --mnemonic "$MNEMONIC" --mnemonic-index "$WORKER1_INDEX" | tr -d '\r\n')
 WORKER2_PK=$(cast wallet private-key --mnemonic "$MNEMONIC" --mnemonic-index "$WORKER2_INDEX" | tr -d '\r\n')
+WORKER3_PK=$(cast wallet private-key --mnemonic "$MNEMONIC" --mnemonic-index "$WORKER3_INDEX" | tr -d '\r\n')
 TEST_USER_ADDR=$(cast wallet address --mnemonic "$MNEMONIC" --mnemonic-index "$TEST_USER_INDEX")
-info "Derived addresses -> controller1:$CONTROLLER_ADDR worker1:$WORKER1_ADDR worker2:$WORKER2_ADDR testUser:$TEST_USER_ADDR"
+info "Derived addresses -> controller1:$CONTROLLER_ADDR worker1:$WORKER1_ADDR worker2:$WORKER2_ADDR worker3:$WORKER3_ADDR testUser:$TEST_USER_ADDR"
 
 info "Minting ControllerLicense to controller1 ($CONTROLLER_ADDR)"
 cast send "$CONTROLLER_LICENSE" \
@@ -205,6 +224,8 @@ info "Funding workers with OCU"
 cast send "$OCU_TOKEN" "transfer(address,uint256)" "$WORKER1_ADDR" "$FUND_AMT" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 cast send "$OCU_TOKEN" "transfer(address,uint256)" "$WORKER2_ADDR" "$FUND_AMT" \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+cast send "$OCU_TOKEN" "transfer(address,uint256)" "$WORKER3_ADDR" "$FUND_AMT" \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 cast send "$OCU_TOKEN" "transfer(address,uint256)" "$TEST_USER_ADDR" "$FUND_AMT" \
@@ -221,7 +242,12 @@ cast send "$OCU_TOKEN" "approve(address,uint256)" "$WORKER_MANAGER" "$STAKE_AMT"
 cast send "$WORKER_MANAGER" "stake(uint256)" "$STAKE_AMT" \
   --rpc-url "$RPC_URL" --private-key "$WORKER2_PK" >/dev/null
 
-# Assign membership: controller1 and worker1 -> university1 (orgId=1), worker2 -> lab1 (orgId=2)
+cast send "$OCU_TOKEN" "approve(address,uint256)" "$WORKER_MANAGER" "$STAKE_AMT" \
+  --rpc-url "$RPC_URL" --private-key "$WORKER3_PK" >/dev/null
+cast send "$WORKER_MANAGER" "stake(uint256)" "$STAKE_AMT" \
+  --rpc-url "$RPC_URL" --private-key "$WORKER3_PK" >/dev/null
+
+# Assign membership: controller1 and worker1 -> university1 (orgId=1), worker2 -> lab1 (orgId=2), worker3 -> lab2 (orgId=4)
 info "Assigning org memberships"
 cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$CONTROLLER_ADDR" 1 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
@@ -229,11 +255,13 @@ cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$WORKER1_ADDR" 1 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$WORKER2_ADDR" 2 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
+cast send "$ORG_REGISTRY" "assignNode(address,uint256)" "$WORKER3_ADDR" 4 \
+  --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 cast send "$ORG_REGISTRY" "assignUser(address,uint256)" "$TEST_USER_ADDR" 1 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 info "Starting controller, workers, and frontend (Nuxt) with contract env"
-docker compose -f "$COMPOSE_FILE" up -d controller1 worker1 worker2 frontend nginx
+docker compose -f "$COMPOSE_FILE" up -d controller1 worker1 worker2 worker3 frontend nginx
 
 info "Done. Controller: http://localhost:8000 (health at /health)"
 info "Nuxt dev server: http://localhost:3000"

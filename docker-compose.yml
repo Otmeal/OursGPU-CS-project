@@ -79,11 +79,25 @@ services:
     environment:
       - CONTROLLER_GRPC=controller1:50051
       - WORKER_ID=worker-2
-      - ORG_ID=1
+      - ORG_ID=2
       - CHAIN_RPC_URL=http://anvil:8545
       - CHAIN_ID=31337
       - WALLET_MNEMONIC=test test test test test test test test test test test junk
       - WALLET_INDEX=2
+    depends_on: [controller1, anvil]
+
+  worker3:
+    build:
+      context: ./ours-gpu
+      dockerfile: ./apps/worker/Dockerfile
+    environment:
+      - CONTROLLER_GRPC=controller1:50051
+      - WORKER_ID=worker-3
+      - ORG_ID=4
+      - CHAIN_RPC_URL=http://anvil:8545
+      - CHAIN_ID=31337
+      - WALLET_MNEMONIC=test test test test test test test test test test test junk
+      - WALLET_INDEX=4
     depends_on: [controller1, anvil]
 
 volumes:
