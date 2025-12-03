@@ -15,15 +15,26 @@ services:
     container_name: oursgpu-anvil-dev
     entrypoint: ["anvil"]
     command:
-      ["--host","0.0.0.0",
-       "--port","8545",
-       "--chain-id","31337",
-       "--block-time","1",
-       "--mnemonic","test test test test test test test test test test test junk",
-       "--accounts","10",
-       "--balance","1000000",
-       "--base-fee","0",
-       "--gas-price","0"]
+      [
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8545",
+        "--chain-id",
+        "31337",
+        "--block-time",
+        "1",
+        "--mnemonic",
+        "test test test test test test test test test test test junk",
+        "--accounts",
+        "10",
+        "--balance",
+        "1000000",
+        "--base-fee",
+        "0",
+        "--gas-price",
+        "0",
+      ]
     ports:
       - "8545:8545"
   postgres:
@@ -71,6 +82,7 @@ services:
       NODE_ENV: development
       # controller 自己跑 gRPC 在 0.0.0.0:50051；workers 透過服務名連（controller1）
       CONTROLLER_GRPC: 0.0.0.0:50051
+      USER_INFO_PEPPER: dev-pepper
       DATABASE_URL: postgresql://oursgpu:oursgpu@postgres:5432/oursgpu
       MINIO_ENDPOINT: minio
       MINIO_PORT: "9000"
@@ -88,7 +100,7 @@ services:
     env_file:
       - ./ours-gpu/.env.contracts
     ports:
-      - "8000:3000"   # REST / HTTP
+      - "8000:3000" # REST / HTTP
       - "50051:50051" # gRPC
     # 讓日誌更順手
     tty: true
@@ -106,6 +118,22 @@ services:
     depends_on:
       anvil:
         condition: service_started
+
+  userinfo-shuffler:
+    image: curlimages/curl:8.12.1
+    container_name: oursgpu-userinfo-shuffler-dev
+    restart: unless-stopped
+    command: >
+      sh -c "while true; do
+      curl -fsS -X POST \"$$SHUFFLE_TARGET_URL\" || echo \"shuffle failed\";
+      sleep $${SHUFFLE_INTERVAL_SECONDS:-10};
+      done"
+    environment:
+      SHUFFLE_TARGET_URL: http://controller1:3000/user-info/shuffle
+      SHUFFLE_INTERVAL_SECONDS: "10"
+    depends_on:
+      controller1:
+        condition: service_healthy
 
   worker1:
     build:

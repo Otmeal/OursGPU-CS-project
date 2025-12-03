@@ -45,6 +45,7 @@ services:
     environment:
       - NODE_ENV=production
       - CONTROLLER_GRPC=0.0.0.0:50051
+      - USER_INFO_PEPPER=dev-pepper
       - DATABASE_URL=postgresql://oursgpu:oursgpu@postgres:5432/oursgpu
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
@@ -57,6 +58,19 @@ services:
       - WALLET_MNEMONIC=test test test test test test test test test test test junk
       - WALLET_INDEX=0
     depends_on: [postgres, minio, anvil]
+
+  userinfo-shuffler:
+    image: curlimages/curl:8.12.1
+    restart: unless-stopped
+    command: >
+      sh -c "while true; do
+      curl -fsS -X POST \"$$SHUFFLE_TARGET_URL\" || echo \"shuffle failed\";
+      sleep $${SHUFFLE_INTERVAL_SECONDS:-3600};
+      done"
+    environment:
+      - SHUFFLE_TARGET_URL=http://controller1:3000/user-info/shuffle
+      - SHUFFLE_INTERVAL_SECONDS=3600
+    depends_on: [controller1]
 
   worker1:
     build:

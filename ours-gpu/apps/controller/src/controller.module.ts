@@ -6,7 +6,8 @@ import { ControllerService } from './controller.service';
 import { WorkersModule } from './workers/workers.module';
 import { GrpcModule } from './grpc/grpc.module';
 import { ChainModule } from '@ours-gpu/shared';
-import { UsersModule } from './users/users.module';
+import { WalletsModule } from './wallets/wallets.module';
+import { UserInfoModule } from './user-info/user-info.module';
 
 @Module({
   imports: [
@@ -15,7 +16,8 @@ import { UsersModule } from './users/users.module';
     WorkersModule,
     GrpcModule,
     JobsModule,
-    UsersModule,
+    WalletsModule,
+    UserInfoModule,
   ],
   controllers: [ControllerController],
   providers: [ControllerService],

@@ -30,6 +30,13 @@ export const useWalletStore = defineStore('wallet', () => {
   const userOrgId = ref<string | null>(null)
   const userOrgName = ref<string | null>(null)
   const orgLoading = ref<boolean>(false)
+  const registrationChecked = ref<boolean>(false)
+  const walletRegistered = ref<boolean>(false)
+  const registering = ref<boolean>(false)
+  const registrationError = ref<string>('')
+
+  const runtimeConfig = useRuntimeConfig()
+  const apiBase = (runtimeConfig.public.apiBase || '/api').replace(/\/$/, '')
 
   // Desired chain (dev defaults to Anvil/Hardhat 31337)
   const DESIRED_CHAIN_ID = 31337
@@ -41,6 +48,57 @@ export const useWalletStore = defineStore('wallet', () => {
   let accountsChangedHandler: ((accounts: string[]) => void) | null = null
   let chainChangedHandler: ((cidHex: string | number) => void) | null = null
 
+  async function refreshWalletRegistration() {
+    registrationChecked.value = false
+    walletRegistered.value = false
+    registrationError.value = ''
+    const addr = (address.value || '').trim().toLowerCase()
+    if (!addr) {
+      registrationChecked.value = true
+      return
+    }
+    try {
+      const res = await fetch(`${apiBase}/wallets/${encodeURIComponent(addr)}`)
+      walletRegistered.value = res.ok
+    } catch (err: any) {
+      registrationError.value = err?.message || 'Unable to check wallet registration'
+      walletRegistered.value = false
+    } finally {
+      registrationChecked.value = true
+    }
+  }
+
+  async function registerWallet(info: { name: string; email: string; pepperVersion?: number }) {
+    if (!address.value) {
+      throw new Error('No wallet connected')
+    }
+    registering.value = true
+    registrationError.value = ''
+    try {
+      const res = await fetch(`${apiBase}/wallets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: address.value,
+          name: info.name,
+          email: info.email,
+          pepperVersion: info.pepperVersion,
+        }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `Registration failed (${res.status})`)
+      }
+      walletRegistered.value = true
+    } catch (err: any) {
+      registrationError.value = err?.message || 'Wallet registration failed'
+      throw err
+    } finally {
+      registrationChecked.value = true
+      registering.value = false
+    }
+  }
+
   /** Normalize and set address/connected based on accounts array */
   function applyAccounts(accounts: unknown) {
     // Defensive parse: MetaMask returns string[]; guard unknown
@@ -50,6 +108,8 @@ export const useWalletStore = defineStore('wallet', () => {
     connected.value = !!first
     // Resolve org info whenever account changes
     void resolveUserOrgIfPossible()
+    // Check registration status
+    void refreshWalletRegistration()
   }
 
   /** Connect wallet (prompt; avoid silently reusing last account) */
@@ -162,6 +222,8 @@ export const useWalletStore = defineStore('wallet', () => {
     connected.value = false
     userOrgId.value = null
     userOrgName.value = null
+    walletRegistered.value = false
+    registrationChecked.value = false
     // Keep last known chainId to avoid surprising UI jumps
     unwireEvents()
   }
@@ -285,10 +347,16 @@ export const useWalletStore = defineStore('wallet', () => {
     userOrgId,
     userOrgName,
     orgLoading,
+    registrationChecked,
+    walletRegistered,
+    registering,
+    registrationError,
     // actions
     connect,
     disconnect,
     initialize,
     resolveUserOrgIfPossible,
+    refreshWalletRegistration,
+    registerWallet,
   }
 })

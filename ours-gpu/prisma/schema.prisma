@@ -8,70 +8,112 @@ datasource db {
 }
 
 enum JobStatus {
-  REQUESTED
-  SCHEDULED
-  PROCESSING
-  VERIFYING
-  DONE
-  FAILED
+  REQUESTED @map("requested")
+  SCHEDULED @map("scheduled")
+  PROCESSING @map("processing")
+  VERIFYING @map("verifying")
+  DONE @map("done")
+  FAILED @map("failed")
+
+  @@map("job_status")
 }
 
 enum VerificationMethod {
-  BUILTIN_HASH
-  USER_PROGRAM
+  BUILTIN_HASH @map("builtin_hash")
+  USER_PROGRAM @map("user_program")
+
+  @@map("verification_method")
 }
 
 model Job {
-  id               String     @id @default(uuid()) @db.Uuid
-  orgId            String
-  jobType          String
-  status           JobStatus  @default(REQUESTED)
-  objectKey        String     // MinIO object key containing job payload/config
+  id                String             @id @default(uuid()) @db.Uuid
+  orgId             String             @map("org_id")
+  jobType           String             @map("job_type")
+  status            JobStatus          @default(REQUESTED)
+  objectKey         String             @map("object_key") // MinIO object key containing job payload/config
   // MinIO object key to primary output/result (e.g., outputs/<jobId>/result.txt)
-  outputObjectKey  String?
-  metadata         Json?
-  priority         Int        @default(0)
-  workerId         String     @db.Text
-  worker           Worker     @relation(fields: [workerId], references: [id])
-  // Optional owner of the job (user)
-  userId           String?    @db.Text
-  user             User?      @relation(fields: [userId], references: [id])
+  outputObjectKey   String?            @map("output_object_key")
+  metadata          Json?
+  priority          Int                @default(0)
+  workerId          String             @map("worker_id") @db.Text
+  worker            Worker             @relation(fields: [workerId], references: [id])
+  /// Optional wallet owner of the job
+  walletId          String?            @map("wallet_id") @db.Text
+  wallet            Wallet?            @relation(fields: [walletId], references: [id])
   // Command to start the computation in worker runtime (e.g., bash entrypoint)
-  entryCommand     String?
+  entryCommand      String?            @map("entry_command")
   // How to verify results: built-in hash vs user-provided verifier program
-  verification     VerificationMethod @default(BUILTIN_HASH)
+  verification      VerificationMethod @default(BUILTIN_HASH)
   // If USER_PROGRAM: MinIO object key to the verifier program/assets
-  verifierObjectKey String?
+  verifierObjectKey String?            @map("verifier_object_key")
   // If USER_PROGRAM: command to execute verifier program
-  verifierCommand   String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  verifierCommand   String?            @map("verifier_command")
+  createdAt         DateTime           @map("created_at") @default(now())
+  updatedAt         DateTime           @map("updated_at") @updatedAt
 
-  @@index([workerId])
-  @@index([userId])
+  @@index([workerId], map: "job_worker_id_idx")
+  @@index([walletId], map: "job_wallet_id_idx")
+  @@map("job")
 }
 
 model Worker {
   id          String   @id @db.Text
-  orgId       String
-  orgName     String?
+  orgId       String   @map("org_id")
+  orgName     String?  @map("org_name")
   wallet      String?  @db.Text
   concurrency Int
   running     Int      @default(0)
-  lastSeen    DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  lastSeen    DateTime @map("last_seen")
+  createdAt   DateTime @map("created_at") @default(now())
+  updatedAt   DateTime @map("updated_at") @updatedAt
 
   // Relation: one Worker has many Jobs
   jobs        Job[]
+
+  @@map("worker")
 }
 
-model User {
-  // Primary key is the wallet address (normalized lowercase by app code)
-  id             String  @id @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+model Wallet {
+  /// Primary key is the wallet address (normalized lowercase by app code)
+  id             String   @id @db.Text
+  createdAt      DateTime @map("created_at") @default(now())
+  updatedAt      DateTime @map("updated_at") @updatedAt
 
-  // Relation: one User has many Jobs
+  // Relation: one Wallet has many Jobs
   jobs           Job[]
+
+  /// One-to-one hashed identity derived from user-provided info
+  identityHash   UserIdentityHash?
+
+  @@map("wallet")
+}
+
+model UserInfo {
+  /// Unlinked record of user-provided name/email, used for pseudonymized matching
+  id        String   @id @default(uuid()) @db.Uuid
+  /// User-provided display name
+  fullName  String   @map("full_name")
+  /// User-provided email address
+  email     String
+
+  @@index([email], map: "user_info_email_idx")
+  @@map("user_info")
+}
+
+model UserIdentityHash {
+  /// Unique identifier for the hashed identity record
+  id            String   @id @default(uuid()) @db.Uuid
+  /// Pepper-hardened hash of personal info (name/email)
+  infoHash      String   @unique(map: "user_identity_hash_info_hash_key") @map("info_hash") @db.Text
+  /// Wallet this hash is linked to (one-to-one)
+  walletId      String   @unique(map: "user_identity_hash_wallet_id_key") @map("wallet_id") @db.Text
+  wallet        Wallet   @relation(fields: [walletId], references: [id])
+  /// Version number to rotate peppers without breaking lookup
+  pepperVersion Int      @map("pepper_version") @default(1)
+  /// Hash algorithm used to derive infoHash
+  hashAlgorithm String   @map("hash_algorithm") @default("sha256")
+
+  @@index([walletId], map: "user_identity_hash_wallet_id_idx")
+  @@index([infoHash], map: "user_identity_hash_info_hash_idx")
+  @@map("user_identity_hash")
 }

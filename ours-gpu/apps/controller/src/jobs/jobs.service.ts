@@ -18,23 +18,23 @@ export class JobsService {
     });
   }
 
-  list(userId?: string): Promise<Job[]> {
+  list(walletId?: string): Promise<Job[]> {
     return this.prisma.job.findMany({
-        orderBy: { createdAt: 'desc' } 
-      , ...(userId ? { where: { userId } } : {})
-      });
+      orderBy: { createdAt: 'desc' },
+      ...(walletId ? { where: { walletId } } : {}),
+    });
   }
 
   findById(id: string): Promise<Job | null> {
     return this.prisma.job.findUnique({ where: { id } });
   }
 
-  jobsByUser(
-    userId: string,
+  jobsByWallet(
+    walletId: string,
     opts?: { status?: JobStatus; skip?: number; take?: number },
   ): Promise<Job[]> {
     return this.prisma.job.findMany({
-      where: { userId, ...(opts?.status ? { status: opts.status } : {}) },
+      where: { walletId, ...(opts?.status ? { status: opts.status } : {}) },
       orderBy: { createdAt: 'desc' },
       skip: opts?.skip,
       take: opts?.take ?? 50,

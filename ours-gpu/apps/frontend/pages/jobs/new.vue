@@ -141,7 +141,7 @@
           <v-btn
             color="primary"
             :loading="creating"
-            :disabled="creating || !objectKey || !uploadedPayload || !selectedWorkerId || !walletAddress"
+            :disabled="creating || !objectKey || !uploadedPayload || !selectedWorkerId || !walletReadyForJobs"
             @click="createJob"
           >
             Create Job
@@ -150,6 +150,11 @@
         <div class="mt-2" v-if="!walletAddress">
           <v-alert type="info" variant="tonal">
             Connect your wallet to create a job.
+          </v-alert>
+        </div>
+        <div class="mt-2" v-else-if="registrationChecked && !walletRegistered">
+          <v-alert type="warning" variant="tonal">
+            Please finish wallet registration (name + email) from the top-right connect menu before creating jobs.
           </v-alert>
         </div>
         <div class="mt-3" v-if="createdJobId">
@@ -190,8 +195,12 @@ type OffchainJobBase = {
 
 type OffchainJobCreate = OffchainJobBase & {
   workerId: string
-  userWallet: string
+  wallet: string
 }
+
+const runtimeConfig = useRuntimeConfig()
+const apiBase = (runtimeConfig.public.apiBase || '/api').replace(/\/$/, '')
+const s3ProxyBase = (runtimeConfig.public.s3ProxyBase || '/s3').replace(/\/$/, '')
 
 // Form state
 const orgId = ref('org-1')
@@ -234,8 +243,15 @@ const createdJobId = ref<string | null>(null)
 
 // Wallet (required to create jobs)
 const wallet = useWalletStore()
-const { address: walletAddress, userOrgId: storeUserOrgId, userOrgName } = storeToRefs(wallet)
+const {
+  address: walletAddress,
+  userOrgId: storeUserOrgId,
+  userOrgName,
+  walletRegistered,
+  registrationChecked,
+} = storeToRefs(wallet)
 const { connect } = wallet
+const walletReadyForJobs = computed(() => !!walletAddress.value && walletRegistered.value)
 
 const verificationItems = [
   { title: 'Built-in Hash', value: 'BUILTIN_HASH' },
@@ -259,8 +275,7 @@ async function fetchQuote(workerWallet: string) {
     if (!walletAddress.value) { quotedReward.value = null; return }
     const provider = (window as any).ethereum
     if (!provider) { quotedReward.value = null; return }
-    const cfg = useRuntimeConfig()
-    const jmAddress = cfg.public.jobManagerAddress as `0x${string}`
+    const jmAddress = runtimeConfig.public.jobManagerAddress as `0x${string}`
     if (!jmAddress) { throw new Error('Missing JobManager address in config') }
 
     const publicClient = createPublicClient({ chain: foundry, transport: custom(provider) })
@@ -321,19 +336,33 @@ async function fetchQuote(workerWallet: string) {
 
 // Helpers: POST JSON to controller via /api
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const url = `${apiBase}${path}`
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body ?? {}),
   })
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`)
-  return res.json() as Promise<T>
+  const text = await res.text()
+  const trimmed = text.trim()
+  if (!res.ok) {
+    const snippet = trimmed.slice(0, 200)
+    throw new Error(snippet ? `POST ${path} failed (${res.status}): ${snippet}` : `POST ${path} failed: ${res.status}`)
+  }
+  if (!trimmed) {
+    throw new Error('Empty response from API')
+  }
+  try {
+    return JSON.parse(trimmed) as T
+  } catch (err: any) {
+    const snippet = trimmed.slice(0, 200)
+    throw new Error(snippet ? `Non-JSON response from API: ${snippet}` : err?.message || 'Invalid JSON response')
+  }
 }
 
 async function fetchWorkers() {
   workersLoading.value = true
   try {
-    const res = await fetch('/api/workers')
+    const res = await fetch(`${apiBase}/workers`)
     if (res.ok) {
       workers.value = await res.json()
     }
@@ -345,8 +374,9 @@ async function fetchWorkers() {
 function toS3Proxy(url: string) {
   // Convert absolute presigned URL (e.g., http://localhost:9000/bucket/key?...)
   // into our nginx path: /s3/bucket/key?... so browser avoids CORS.
+  if (!s3ProxyBase) return url
   const u = new URL(url)
-  return `/s3${u.pathname}${u.search}`
+  return `${s3ProxyBase}${u.pathname}${u.search}`
 }
 async function uploadToPresigned(url: string, file: File) {
   const proxyUrl = toS3Proxy(url)
@@ -406,6 +436,10 @@ function parseMetadata(): any | undefined {
 }
 
 async function createJob() {
+  if (!walletReadyForJobs.value) {
+    alert('Please register your wallet (name + email) before creating a job.')
+    return
+  }
   creating.value = true
   createdJobId.value = null
   try {
@@ -444,8 +478,7 @@ async function createJob() {
 
     // 2) Ask controller to sign EIP-712 CreateJob
     // Reward in raw units from quote
-    const cfg = useRuntimeConfig()
-    const jmAddress = cfg.public.jobManagerAddress
+    const jmAddress = runtimeConfig.public.jobManagerAddress
     if (!jmAddress) {
       alert('Missing JobManager address in config')
       return
@@ -530,7 +563,7 @@ async function createJob() {
       ...basePayload,
       metadata: mergedMetadata,
       workerId: workerId!,
-      userWallet: walletAddress.value!,
+      wallet: walletAddress.value!,
     }
     const resp = await apiPost<{ id: string }>(`/jobs`, jobCreatePayload)
     createdJobId.value = (resp as any).id

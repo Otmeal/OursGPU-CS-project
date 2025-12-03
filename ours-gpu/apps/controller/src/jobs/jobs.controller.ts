@@ -14,14 +14,14 @@ import { JobsService } from './jobs.service';
 import { VerificationMethod, Prisma } from '@prisma/client';
 import { MinioService } from '../minio/minio.service';
 import { WorkersService } from '../workers/workers.service';
-import { UsersService } from '../users/users.service';
+import { WalletsService } from '../wallets/wallets.service';
 import { JobManagerChainService } from '../chain/job-manager.service';
 
 @Controller('jobs')
 export class JobsController {
   constructor(
     private readonly jobs: JobsService,
-    private readonly users: UsersService,
+    private readonly wallets: WalletsService,
     private readonly minio: MinioService,
     @Inject(forwardRef(() => WorkersService))
     private readonly workers: WorkersService,
@@ -34,14 +34,17 @@ export class JobsController {
     return this.jobs.list();
   }
 
-  @Get('user')
-  listByUser(@Query('userId') userId?: string) {
-    // List jobs for a given user id (wallet string) via query param only.
-    if (!userId || !userId.trim()) {
-      throw new BadRequestException('userId query param is required');
+  @Get(['wallet', 'user'])
+  listByWallet(
+    @Query('walletId') walletId?: string,
+    @Query('userId') userId?: string,
+  ) {
+    // List jobs for a given wallet id (legacy: userId).
+    const id = (walletId ?? userId)?.trim().toLowerCase();
+    if (!id) {
+      throw new BadRequestException('walletId query param is required');
     }
-    const uid = userId.trim().toLowerCase();
-    return this.jobs.jobsByUser(uid);
+    return this.jobs.jobsByWallet(id);
   }
 
   @Get(':id')
@@ -75,11 +78,15 @@ export class JobsController {
   @Post()
   async create(
     @Body()
-    body: Prisma.JobUncheckedCreateInput & { userWallet: string },
+    body: Prisma.JobUncheckedCreateInput & {
+      wallet?: string;
+      userWallet?: string; // legacy alias
+    },
   ) {
-    const { userWallet, ...jobInput } = body;
-    if (!userWallet || typeof userWallet !== 'string' || !userWallet.trim()) {
-      throw new BadRequestException('userWallet (wallet address) is required');
+    const { wallet, userWallet, ...jobInput } = body;
+    const walletAddress = (wallet ?? userWallet)?.trim().toLowerCase();
+    if (!walletAddress) {
+      throw new BadRequestException('wallet (wallet address) is required');
     }
     // Verify primary job payload exists in MinIO
     try {
@@ -100,13 +107,17 @@ export class JobsController {
         );
       }
     }
-    // If a user wallet is provided, upsert user and attach to job
-    const createInput: Prisma.JobUncheckedCreateInput = { ...jobInput } as any;
-    if (userWallet && typeof userWallet === 'string' && userWallet.trim()) {
-      const user = await this.users.upsert(userWallet);
-      (createInput as any).userId = user.id;
+    // If a wallet is provided, ensure it exists and attach to job
+    const walletRecord = await this.wallets.findById(walletAddress);
+    if (!walletRecord) {
+      throw new BadRequestException(
+        'wallet is not registered; create it first via POST /wallets with name and email',
+      );
     }
-    delete (createInput as any).userWallet;
+    const createInput: Prisma.JobUncheckedCreateInput = {
+      ...jobInput,
+      walletId: walletRecord.id,
+    } as Prisma.JobUncheckedCreateInput;
 
     const job = await this.jobs.create(createInput);
     await this.workers.dispatch(job, jobInput.workerId);

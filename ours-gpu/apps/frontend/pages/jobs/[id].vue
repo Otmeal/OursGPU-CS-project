@@ -106,7 +106,7 @@ type JobDetail = {
   metadata?: any
   priority: number
   workerId?: string | null
-  userId?: string | null
+  walletId?: string | null
   entryCommand?: string | null
   verification: 'BUILTIN_HASH' | 'USER_PROGRAM'
   verifierObjectKey?: string | null
@@ -121,6 +121,8 @@ type JobDetail = {
 
 const route = useRoute()
 const id = computed(() => String(route.params.id || ''))
+const runtimeConfig = useRuntimeConfig()
+const apiBase = (runtimeConfig.public.apiBase || '/api').replace(/\/$/, '')
 const job = ref<JobDetail | null>(null)
 const loading = ref(false)
 const error = ref('')
@@ -157,7 +159,7 @@ async function fetchJob() {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch(`/api/jobs/${encodeURIComponent(id.value)}`)
+    const res = await fetch(`${apiBase}/jobs/${encodeURIComponent(id.value)}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     job.value = await res.json()
   } catch (e: any) {

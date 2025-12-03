@@ -9,7 +9,9 @@
 
     <v-alert v-if="!connected" type="info" variant="tonal" class="mb-4">
       Connect your wallet to view your jobs.
-      <v-btn color="primary" class="ml-3" :loading="pending" @click="connect">Connect Wallet</v-btn>
+      <v-btn color="primary" class="ml-3" :loading="pending" @click="connectAndMaybeRegister">
+        Connect Wallet
+      </v-btn>
     </v-alert>
 
     <div class="d-flex flex-wrap gap-4 align-center mb-4">
@@ -55,6 +57,57 @@
         </tbody>
       </v-table>
     </v-card>
+
+    <v-dialog v-model="registrationDialog" max-width="480">
+      <v-card>
+        <v-card-title>Complete wallet registration</v-card-title>
+        <v-card-text>
+          <p class="text-body-2 mb-3">
+            Provide a name and email to link this wallet before viewing jobs.
+          </p>
+          <v-alert
+            v-if="registrationError"
+            type="error"
+            variant="tonal"
+            class="mb-3"
+          >
+            {{ registrationError }}
+          </v-alert>
+          <v-text-field
+            v-model="regName"
+            label="Name"
+            density="comfortable"
+            required
+          />
+          <v-text-field
+            v-model="regEmail"
+            label="Email"
+            density="comfortable"
+            required
+            type="email"
+          />
+          <v-text-field
+            v-model="regPepper"
+            label="Pepper version (optional)"
+            density="comfortable"
+            type="number"
+            min="1"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="registering" @click="snoozeDialog">Later</v-btn>
+          <v-btn
+            color="primary"
+            :loading="registering"
+            :disabled="!canSubmit"
+            @click="submitRegistration"
+          >
+            Register
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -68,16 +121,36 @@ type JobRow = {
   jobType: string
   status: 'REQUESTED'|'SCHEDULED'|'PROCESSING'|'VERIFYING'|'DONE'|'FAILED'
   workerId?: string | null
+  walletId?: string | null
   createdAt: string
 }
 
+const runtimeConfig = useRuntimeConfig()
+const apiBase = (runtimeConfig.public.apiBase || '/api').replace(/\/$/, '')
+
 const wallet = useWalletStore()
-const { address, connected, pending } = storeToRefs(wallet)
-const { connect } = wallet
+const {
+  address,
+  connected,
+  pending,
+  walletRegistered,
+  registrationChecked,
+  registrationError,
+  registering,
+} = storeToRefs(wallet)
+const { connect, registerWallet, refreshWalletRegistration } = wallet
 
 const addressDisplay = computed(() => address.value || '—')
 const jobs = ref<JobRow[]>([])
 const loading = ref(false)
+const registrationDialog = ref(false)
+const regName = ref('')
+const regEmail = ref('')
+const regPepper = ref<string>('')
+const snoozedAddress = ref<string | null>(null)
+
+const canSubmit = computed(() => !!regName.value.trim() && !!regEmail.value.trim())
+const walletReady = computed(() => connected.value && walletRegistered.value)
 
 function formatTs(ts: string) {
   try { return new Date(ts).toLocaleString() } catch { return ts }
@@ -101,7 +174,7 @@ async function fetchJobs() {
   }
   loading.value = true
   try {
-    const res = await fetch(`/api/jobs/user?userId=${encodeURIComponent(addr)}`)
+    const res = await fetch(`${apiBase}/jobs/wallet?walletId=${encodeURIComponent(addr)}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     jobs.value = await res.json()
   } catch (e) {
@@ -117,6 +190,55 @@ onMounted(() => {
 })
 watch(connected, (c) => { if (c) fetchJobs(); else jobs.value = [] })
 watch(address, () => { if (connected.value) fetchJobs() })
+
+watch(
+  [connected, registrationChecked, walletRegistered, address],
+  ([isConnected, checked, registered, addr]) => {
+    const normalizedAddr = (addr || '').toLowerCase()
+    if (!isConnected) {
+      registrationDialog.value = false
+      snoozedAddress.value = null
+      return
+    }
+    if (checked && !registered && snoozedAddress.value !== normalizedAddr) {
+      registrationDialog.value = true
+    }
+    if (registered) {
+      registrationDialog.value = false
+      snoozedAddress.value = null
+      // Once registered, load jobs
+      void fetchJobs()
+    }
+  },
+)
+
+async function connectAndMaybeRegister() {
+  await connect()
+  await refreshWalletRegistration()
+}
+
+async function submitRegistration() {
+  if (!canSubmit.value) return
+  const pepperNum =
+    regPepper.value && !Number.isNaN(Number(regPepper.value))
+      ? Number(regPepper.value)
+      : undefined
+  try {
+    await registerWallet({
+      name: regName.value.trim(),
+      email: regEmail.value.trim(),
+      pepperVersion: pepperNum,
+    })
+    await refreshWalletRegistration()
+  } catch {
+    // error surfaced via registrationError alert
+  }
+}
+
+function snoozeDialog() {
+  snoozedAddress.value = (address.value || '').toLowerCase() || null
+  registrationDialog.value = false
+}
 </script>
 
 <style scoped>

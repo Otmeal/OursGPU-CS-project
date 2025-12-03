@@ -261,7 +261,7 @@ cast send "$ORG_REGISTRY" "assignUser(address,uint256)" "$TEST_USER_ADDR" 1 \
   --rpc-url "$RPC_URL" --private-key "$DEPLOYER_PK" >/dev/null
 
 info "Starting controller, workers, and frontend (Nuxt) with contract env"
-docker compose -f "$COMPOSE_FILE" up -d controller1 worker1 worker2 worker3 frontend nginx
+docker compose -f "$COMPOSE_FILE" up -d controller1 worker1 worker2 worker3 frontend nginx userinfo-shuffler
 
 info "Done. Controller: http://localhost:8000 (health at /health)"
 info "Nuxt dev server: http://localhost:3000"
