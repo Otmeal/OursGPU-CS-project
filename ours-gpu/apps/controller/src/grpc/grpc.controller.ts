@@ -47,6 +47,10 @@ export class GrpcController {
     solution?: string;
     metricsJson?: string;
     workerId?: string;
+    executionSeconds?: number;
+    terminated?: boolean;
+    endAt?: number;
+    executedAt?: number;
   }) {
     this.logger.log(
       `ReportResult called: jobId=${payload?.jobId} success=${payload?.success}`,
@@ -64,5 +68,10 @@ export class GrpcController {
       `PresignOutput called: jobId=${payload?.jobId} file=${payload?.fileName}`,
     );
     return this.grpcService.presignOutput(payload);
+  }
+
+  @GrpcMethod('WorkerService', 'ListScheduled')
+  listScheduled(payload: { id: string }) {
+    return this.grpcService.listScheduled(payload);
   }
 }

@@ -41,6 +41,8 @@ type Job = {
   // Convenience URLs and output prefix from controller
   payloadUrl?: string;
   outputPrefix?: string;
+  startAt?: number;
+  killAt?: number;
 };
 type JobResult = {
   jobId: string;
@@ -48,6 +50,10 @@ type JobResult = {
   solution: string;
   success: boolean;
   metricsJson?: string;
+  executionSeconds?: number;
+  terminated?: boolean;
+  endAt?: number;
+  executedAt?: number;
 };
 type ReportReply = { ok: boolean };
 
@@ -75,6 +81,7 @@ interface WorkerGrpcClient {
     getUrl: string;
   }>;
   jobStream(data: { id: string }): Observable<Job>;
+  listScheduled(data: { id: string }): Observable<{ jobs?: Job[] }>;
 }
 
 @Injectable()
@@ -98,8 +105,28 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     process.env.MAX_BACKOFF_MS ?? '30000',
     10,
   );
+  private scheduledPollMs = Number.parseInt(
+    process.env.SCHEDULED_POLL_MS ?? '5000',
+    10,
+  );
+  private payloadPrefetchMs = Number.parseInt(
+    process.env.PAYLOAD_PREFETCH_MS ?? `${5 * 60 * 1000}`,
+    10,
+  );
   private jobStreamSub?: Subscription;
   private registering = false;
+  private scheduled = new Map<
+    string,
+    {
+      job: Job;
+      payloadPromise?: Promise<string | undefined>;
+      timer?: NodeJS.Timeout;
+      payloadTimer?: NodeJS.Timeout;
+      workDir?: string;
+    }
+  >();
+  private scheduledPoll?: NodeJS.Timeout;
+  private scheduledPollInFlight?: Promise<void>;
 
   constructor(
     @Inject('GRPC_CLIENT') private readonly client: ClientGrpc,
@@ -131,12 +158,19 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
     // Subscribe to server-pushed jobs with automatic retry
     this.startJobStream();
+    // Periodically refresh scheduled jobs to ensure future executions are queued
+    this.startScheduledPoll();
   }
 
   onModuleDestroy() {
     this.destroyed = true;
     if (this.interval) clearInterval(this.interval);
     if (this.jobStreamSub) this.jobStreamSub.unsubscribe();
+    for (const entry of this.scheduled.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+      if (entry.payloadTimer) clearTimeout(entry.payloadTimer);
+    }
+    if (this.scheduledPoll) clearTimeout(this.scheduledPoll);
   }
 
   private async pulse() {
@@ -244,6 +278,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
           this.logger.log(
             `Registered worker ${this.id} (org=${orgId}, conc=${concurrency})`,
           );
+          // Pull scheduled jobs immediately on first registration so we do not wait for the poll interval
+          void this.fetchScheduledJobs('register');
           break;
         }
         const note = reply?.note || 'registration rejected';
@@ -279,10 +315,10 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
           );
           if (job?.jobId) {
             this.logger.debug(`Pushed job ${job.jobId} type=${job.jobType}`);
-            this.executeJob(job).catch((err: unknown) => {
+            this.scheduleJob(job).catch((err: unknown) => {
               const e = err as Error;
               this.logger.warn(
-                `executeJob error: ${e?.message ?? String(err)}`,
+                `scheduleJob error: ${e?.message ?? String(err)}`,
               );
             });
           }
@@ -292,6 +328,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(
             `JobStream error: ${e?.message ?? String(err)}. Reconnecting in ${this.streamBackoffMs}ms`,
           );
+          void this.fetchScheduledJobs('jobStream-error');
           setTimeout(() => {
             this.streamBackoffMs = Math.min(
               this.maxBackoffMs,
@@ -302,6 +339,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
         },
         complete: () => {
           this.logger.warn('JobStream completed. Reconnecting...');
+          void this.fetchScheduledJobs('jobStream-complete');
           setTimeout(() => subscribe(), this.streamBackoffMs);
         },
       });
@@ -309,14 +347,169 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     subscribe();
   }
 
+  private fetchScheduledJobs(reason: string) {
+    if (this.destroyed || !this.registered) return Promise.resolve();
+    if (this.scheduledPollInFlight) return this.scheduledPollInFlight;
+    this.scheduledPollInFlight = (async () => {
+      const res = await firstValueFrom(this.svc.listScheduled({ id: this.id }));
+      for (const job of res?.jobs ?? []) {
+        await this.scheduleJob(job);
+      }
+    })()
+      .catch((err: unknown) => {
+        const e = err as Error;
+        this.logger.debug(
+          `ListScheduled(${reason}) error: ${e?.message ?? String(err)}`,
+        );
+      })
+      .finally(() => {
+        this.scheduledPollInFlight = undefined;
+      });
+    return this.scheduledPollInFlight;
+  }
+
+  private startScheduledPoll() {
+    const poll = async () => {
+      if (this.destroyed) return;
+      await this.fetchScheduledJobs('poll');
+      const interval = this.registered
+        ? this.scheduledPollMs
+        : Math.min(5000, this.scheduledPollMs);
+      if (!this.destroyed) {
+        this.scheduledPoll = setTimeout(() => poll(), interval);
+      }
+    };
+    void poll();
+  }
+
   private delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private async executeJob(job: Job) {
+  private async scheduleJob(job: Job) {
+    if (!job?.jobId) return;
+    const nowMs = Date.now();
+    const startSeconds = Number(job.startAt ?? Math.floor(nowMs / 1000));
+    const killSeconds = Number(job.killAt ?? 0);
+    const startMs = startSeconds * 1000;
+    const killMs = killSeconds > 0 ? killSeconds * 1000 : 0;
+    if (killMs > 0 && killMs <= nowMs) {
+      this.logger.warn(
+        `Skipping job ${job.jobId}: kill time already passed`,
+      );
+      return;
+    }
+    // Cancel existing timer if rescheduling
+    const existing = this.scheduled.get(job.jobId);
+    if (existing?.timer) clearTimeout(existing.timer);
+    if (existing?.payloadTimer) clearTimeout(existing.payloadTimer);
+
+    let workDir = existing?.workDir;
+    let payloadPromise = existing?.payloadPromise;
+    let payloadTimer: NodeJS.Timeout | undefined;
+    let timer: NodeJS.Timeout | undefined;
+    const ensureWorkDir = async () => {
+      if (!workDir) {
+        workDir = await fs.mkdtemp(path.join(os.tmpdir(), `oursgpu-${job.jobId}-`));
+      }
+      return workDir;
+    };
+
+    const startPayloadPrefetch = async () => {
+      try {
+        payloadTimer = undefined;
+        const dir = await ensureWorkDir();
+        payloadPromise = this.preparePayload(job, dir).catch((err: unknown) => {
+          const e = err as Error;
+          this.logger.warn(
+            `Prefetch payload failed for job=${job.jobId}: ${e?.message ?? String(err)}`,
+          );
+          return undefined;
+        });
+        this.scheduled.set(job.jobId, {
+          job,
+          payloadPromise,
+          timer,
+          payloadTimer,
+          workDir: dir,
+        });
+        await payloadPromise;
+      } catch (err: unknown) {
+        const e = err as Error;
+        this.logger.warn(
+          `Prefetch payload failed for job=${job.jobId}: ${e?.message ?? String(err)}`,
+        );
+      }
+    };
+
+    const delayMs = Math.max(0, startMs - Date.now());
+    if (delayMs === 0) {
+      await this.runJob(job, workDir, payloadPromise);
+      this.scheduled.delete(job.jobId);
+      return;
+    }
+
+    // Prefetch payload only when we are within the lead window
+    if (job.payloadUrl) {
+      const prefetchDelayMs = Math.max(0, startMs - this.payloadPrefetchMs - Date.now());
+      if (prefetchDelayMs === 0) {
+        await startPayloadPrefetch();
+      } else {
+        payloadTimer = setTimeout(() => {
+          void startPayloadPrefetch();
+        }, prefetchDelayMs);
+      }
+    }
+
+    timer = setTimeout(() => {
+      this.runJob(job, workDir, payloadPromise)
+        .catch((err: unknown) => {
+          const e = err as Error;
+          this.logger.warn(
+            `executeJob error: ${e?.message ?? String(err)}`,
+          );
+        })
+        .finally(() => this.scheduled.delete(job.jobId));
+    }, delayMs);
+
+    this.scheduled.set(job.jobId, {
+      job,
+      payloadPromise,
+      timer,
+      payloadTimer,
+      workDir,
+    });
+    this.logger.debug(
+      `Job ${job.jobId} scheduled to start in ~${Math.round(delayMs / 1000)}s`,
+    );
+  }
+
+  private async preparePayload(job: Job, workDir: string): Promise<string | undefined> {
+    if (!job.payloadUrl) return undefined;
+    const res = await fetch(job.payloadUrl);
+    if (!res.ok) throw new Error(`payload download failed: ${res.status}`);
+    const arrayBuf = await res.arrayBuffer();
+    const payloadPath = path.join(workDir, 'payload.bin');
+    await fs.writeFile(payloadPath, Buffer.from(arrayBuf));
+    return payloadPath;
+  }
+
+  private hasReachedKillTime(job: Job) {
+    if (!job.killAt) return false;
+    const nowSec = Math.floor(Date.now() / 1000);
+    return nowSec >= Number(job.killAt ?? 0);
+  }
+
+  private async runJob(
+    job: Job,
+    workDir?: string,
+    payloadPromise?: Promise<string | undefined>,
+  ) {
     const start = Date.now();
+    const executedAtSeconds = Math.floor(start / 1000);
     try {
       if (!job.entryCommand) {
+        const endSeconds = Math.floor(Date.now() / 1000);
         await firstValueFrom(
           this.svc.reportResult({
             jobId: job.jobId,
@@ -324,29 +517,29 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
             solution: 'noop',
             success: true,
             metricsJson: '{}',
+            executionSeconds: 0,
+            terminated: this.hasReachedKillTime(job),
+            endAt: endSeconds,
+            executedAt: executedAtSeconds,
           }),
         );
         return;
       }
 
-      // Prepare working directory and fetch payload if available
-      const workDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), `oursgpu-${job.jobId}-`),
-      );
+      const effectiveWorkDir =
+        workDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), `oursgpu-${job.jobId}-`)));
       let payloadPath: string | undefined;
-      if (job.payloadUrl) {
-        const res = await fetch(job.payloadUrl);
-        if (!res.ok) throw new Error(`payload download failed: ${res.status}`);
-        const arrayBuf = await res.arrayBuffer();
-        payloadPath = path.join(workDir, 'payload.bin');
-        await fs.writeFile(payloadPath, Buffer.from(arrayBuf));
+      if (payloadPromise) {
+        payloadPath = await payloadPromise;
+      } else if (job.payloadUrl) {
+        payloadPath = await this.preparePayload(job, effectiveWorkDir);
       }
 
       const env = {
         ...process.env,
         JOB_ID: job.jobId,
         PAYLOAD_PATH: payloadPath ?? '',
-        WORK_DIR: workDir,
+        WORK_DIR: effectiveWorkDir,
         OUTPUT_PREFIX: job.outputPrefix ?? '',
       } as NodeJS.ProcessEnv;
 
@@ -359,7 +552,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       }>((resolve) => {
         exec(
           cmd,
-          { env, cwd: workDir, shell: '/bin/sh' },
+          { env, cwd: effectiveWorkDir, shell: '/bin/sh' },
           (
             error: import('child_process').ExecException | null,
             stdout,
@@ -374,6 +567,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       const ms = Date.now() - start;
       const ok = code === 0;
       const metrics = { ms, stderr: stderr?.slice(0, 4096) };
+      const executionSeconds = Math.max(1, Math.round(ms / 1000));
+      const endSeconds = Math.floor(Date.now() / 1000);
       await firstValueFrom(
         this.svc.reportResult({
           jobId: job.jobId,
@@ -381,6 +576,10 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
           solution: stdout.trim(),
           success: ok,
           metricsJson: JSON.stringify(metrics),
+          executionSeconds,
+          terminated: this.hasReachedKillTime(job),
+          endAt: endSeconds,
+          executedAt: executedAtSeconds,
         }),
       );
       this.logger.debug(`Executed job=${job.jobId} code=${code} ms=${ms}`);
@@ -388,6 +587,8 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
       const ms = Date.now() - start;
       const e = err as Error;
       const metrics = { error: e?.message ?? String(err), ms };
+      const executionSeconds = Math.max(1, Math.round(ms / 1000));
+      const endSeconds = Math.floor(Date.now() / 1000);
       await firstValueFrom(
         this.svc.reportResult({
           jobId: job.jobId,
@@ -395,6 +596,10 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
           solution: '',
           success: false,
           metricsJson: JSON.stringify(metrics),
+          executionSeconds,
+          terminated: this.hasReachedKillTime(job),
+          endAt: endSeconds,
+          executedAt: executedAtSeconds,
         }),
       );
       this.logger.warn(

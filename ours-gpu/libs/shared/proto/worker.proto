@@ -9,6 +9,7 @@ service WorkerService {
   rpc JobStream(SubscribeReq) returns (stream Job); // 推播：controller 主動指派
   rpc ReportResult(JobResult) returns (ReportReply);
   rpc PresignOutput(PresignOutputReq) returns (PresignOutputReply);
+  rpc ListScheduled(SubscribeReq) returns (JobList);
 }
 
 message WorkerInfo {
@@ -44,6 +45,8 @@ message Job {
   // Convenience URLs and output prefix (short-lived)
   string payloadUrl = 10;
   string outputPrefix = 12;   // e.g., outputs/<jobId>/
+  uint64 startAt = 13;        // unix seconds for scheduled start
+  uint64 killAt = 14;         // unix seconds for force-termination
 }
 
 message JobResult {
@@ -52,6 +55,10 @@ message JobResult {
   string solution = 3;        // output (e.g., nonce/hash or path)
   bool success = 4;           // worker's local success; controller may re-verify
   string metricsJson = 5;     // optional JSON-encoded metrics/results
+  uint32 executionSeconds = 6;// actual runtime in seconds
+  bool terminated = 7;        // worker terminated at/after killAt
+  uint64 endAt = 8;           // unix seconds when execution finished
+  uint64 executedAt = 9;      // unix seconds when execution began
 }
 message ReportReply { bool ok = 1; }
 
@@ -65,4 +72,8 @@ message PresignOutputReply {
   string objectKey = 2;  // outputs/<jobId>/<fileName>
   string putUrl = 3;
   string getUrl = 4;
+}
+
+message JobList {
+  repeated Job jobs = 1;
 }

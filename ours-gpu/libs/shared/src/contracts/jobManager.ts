@@ -20,4 +20,6 @@ export type CreateJobParams = {
   nonce: bigint;
   deadline: bigint;
   controller: `0x${string}`;
+  startTime: bigint;
+  killTime: bigint;
 };

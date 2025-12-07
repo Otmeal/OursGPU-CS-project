@@ -39,4 +39,14 @@ export const OrgRegistryAbi = [
     ],
     outputs: [{ name: '', type: 'uint256' }],
   },
+  {
+    type: 'function',
+    name: 'getDistanceToLCA',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'from', type: 'uint256' },
+      { name: 'to', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
 ] as const satisfies Abi

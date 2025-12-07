@@ -72,6 +72,41 @@ export class JobsController {
         // ignore presign error, leave url undefined
       }
     }
+    const meta = (job as any)?.metadata as any;
+    const rawChainJobId =
+      meta?.chainJobId ??
+      meta?.chain?.jobId ??
+      meta?.chainJobID ??
+      meta?.chain?.jobID;
+    const chainJobId =
+      typeof rawChainJobId === 'bigint'
+        ? rawChainJobId
+        : this.toBigIntSafe(rawChainJobId);
+    if (chainJobId !== null) {
+      try {
+        const chainInfo = await this.jmChain.getJobFinancials(chainJobId);
+        if (chainInfo) {
+          result.chain = {
+            jobId: rawChainJobId ?? chainJobId.toString(),
+            tokenDecimals: chainInfo.tokenDecimals ?? undefined,
+            reward: chainInfo.reward?.toString(),
+            feePerHour: chainInfo.feePerHour?.toString(),
+            actualExecutionSeconds: chainInfo.actualExecutionSeconds?.toString(),
+            actualEndTime: chainInfo.actualEndTime?.toString(),
+            stakedTokens: chainInfo.staked != null ? chainInfo.staked.toString() : undefined,
+            spentTokens: chainInfo.spent != null ? chainInfo.spent.toString() : undefined,
+            payoutToWorker: chainInfo.payoutToWorker != null ? chainInfo.payoutToWorker.toString() : undefined,
+            refundToRequester:
+              chainInfo.refundToRequester != null
+                ? chainInfo.refundToRequester.toString()
+                : undefined,
+            paidFullStake: chainInfo.paidFullStake,
+          };
+        }
+      } catch {
+        // Skip on-chain enrichments on failure
+      }
+    }
     return result;
   }
 
@@ -81,13 +116,25 @@ export class JobsController {
     body: Prisma.JobUncheckedCreateInput & {
       wallet?: string;
       userWallet?: string; // legacy alias
+      startAt: number;
+      killAt: number;
     },
   ) {
-    const { wallet, userWallet, ...jobInput } = body;
+    const { wallet, userWallet, startAt, killAt, ...jobInput } = body;
     const walletAddress = (wallet ?? userWallet)?.trim().toLowerCase();
     if (!walletAddress) {
       throw new BadRequestException('wallet (wallet address) is required');
     }
+    const startSeconds = Number(startAt);
+    const killSeconds = Number(killAt);
+    if (!Number.isFinite(startSeconds) || !Number.isFinite(killSeconds)) {
+      throw new BadRequestException('startAt and killAt are required (unix seconds)');
+    }
+    if (killSeconds <= startSeconds) {
+      throw new BadRequestException('killAt must be after startAt');
+    }
+    const startDate = new Date(startSeconds * 1000);
+    const killDate = new Date(killSeconds * 1000);
     // Verify primary job payload exists in MinIO
     try {
       await this.minio.stat(jobInput.objectKey);
@@ -117,6 +164,8 @@ export class JobsController {
     const createInput: Prisma.JobUncheckedCreateInput = {
       ...jobInput,
       walletId: walletRecord.id,
+      startAt: startDate,
+      killAt: killDate,
     } as Prisma.JobUncheckedCreateInput;
 
     const job = await this.jobs.create(createInput);
@@ -134,10 +183,11 @@ export class JobsController {
       orgId?: number | string; // optional; will be resolved from chain if not provided
       target?: string;
       difficulty?: number | string;
-      reward: string | number; // integer token units (will be ignored if quote flow is used)
       worker: string; // EVM address of worker
       deadline?: number; // unix seconds
       nonce?: string | number; // optional override
+      startAt: number; // unix seconds
+      killAt: number; // unix seconds
     },
   ) {
     const requester = (body.requester || '').toLowerCase();
@@ -148,6 +198,16 @@ export class JobsController {
     if (!/^0x[0-9a-fA-F]{40}$/.test(worker)) {
       throw new BadRequestException('invalid worker address');
     }
+    const startSeconds = Number(body.startAt);
+    const killSeconds = Number(body.killAt);
+    if (!Number.isFinite(startSeconds) || !Number.isFinite(killSeconds)) {
+      throw new BadRequestException('startAt and killAt are required');
+    }
+    if (killSeconds <= startSeconds) {
+      throw new BadRequestException('killAt must be after startAt');
+    }
+    const startTime = BigInt(Math.floor(startSeconds));
+    const killTime = BigInt(Math.floor(killSeconds));
     // Resolve orgId from chain if not provided or invalid
     let orgId = BigInt(0);
     try {
@@ -161,9 +221,15 @@ export class JobsController {
       ? (body.target as `0x${string}`)
       : ("0x" + '0'.repeat(64)) as `0x${string}`;
     const difficulty = BigInt(Number(body.difficulty ?? 0));
-    const reward = BigInt(body.reward);
     const deadline = BigInt(body.deadline ?? Math.floor(Date.now() / 1000) + 3600);
     const nonce = body.nonce !== undefined ? BigInt(body.nonce) : undefined;
+    const quote = await this.jmChain.quoteReward(
+      requester as any,
+      worker as any,
+      startTime,
+      killTime,
+    );
+    const reward = quote.reward;
 
     const { signature, params, chainId } = await this.jmChain.signCreateJob({
       requester: requester as `0x${string}`,
@@ -174,6 +240,8 @@ export class JobsController {
       worker: worker as `0x${string}`,
       deadline,
       nonce,
+      startTime,
+      killTime,
     } as any);
     return {
       signature,
@@ -185,6 +253,7 @@ export class JobsController {
         verifyingContract: this.jmChain.getAddress(),
       },
       controller: this.jmChain.getControllerAddress(),
+      quote,
     };
   }
 
@@ -218,5 +287,18 @@ export class JobsController {
       }),
     ]);
     return { bucket, objectKey, putUrl, getUrl };
+  }
+
+  private toBigIntSafe(v: unknown): bigint | null {
+    if (typeof v === 'bigint') return v;
+    if (typeof v === 'number' && Number.isFinite(v)) return BigInt(v);
+    if (typeof v === 'string' && v.trim()) {
+      try {
+        return BigInt(v.trim());
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 }

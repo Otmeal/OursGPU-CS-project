@@ -2,9 +2,14 @@
   <div class="pa-4">
     <div class="d-flex align-center justify-space-between mb-4">
       <h1 class="text-h5">My Jobs</h1>
-      <NuxtLink to="/jobs/new">
-        <v-btn color="primary" variant="tonal">Create Job</v-btn>
-      </NuxtLink>
+      <v-btn
+        color="primary"
+        variant="tonal"
+        :to="connected ? '/jobs/new' : undefined"
+        :disabled="!connected"
+      >
+        Create Job
+      </v-btn>
     </div>
 
     <v-alert v-if="!connected" type="info" variant="tonal" class="mb-4">
@@ -96,7 +101,6 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" :disabled="registering" @click="snoozeDialog">Later</v-btn>
           <v-btn
             color="primary"
             :loading="registering"
@@ -147,7 +151,6 @@ const registrationDialog = ref(false)
 const regName = ref('')
 const regEmail = ref('')
 const regPepper = ref<string>('')
-const snoozedAddress = ref<string | null>(null)
 
 const canSubmit = computed(() => !!regName.value.trim() && !!regEmail.value.trim())
 const walletReady = computed(() => connected.value && walletRegistered.value)
@@ -193,20 +196,9 @@ watch(address, () => { if (connected.value) fetchJobs() })
 
 watch(
   [connected, registrationChecked, walletRegistered, address],
-  ([isConnected, checked, registered, addr]) => {
-    const normalizedAddr = (addr || '').toLowerCase()
-    if (!isConnected) {
-      registrationDialog.value = false
-      snoozedAddress.value = null
-      return
-    }
-    if (checked && !registered && snoozedAddress.value !== normalizedAddr) {
-      registrationDialog.value = true
-    }
-    if (registered) {
-      registrationDialog.value = false
-      snoozedAddress.value = null
-      // Once registered, load jobs
+  ([isConnected, checked, registered]) => {
+    registrationDialog.value = Boolean(isConnected && checked && !registered)
+    if (isConnected && registered) {
       void fetchJobs()
     }
   },
@@ -233,11 +225,6 @@ async function submitRegistration() {
   } catch {
     // error surfaced via registrationError alert
   }
-}
-
-function snoozeDialog() {
-  snoozedAddress.value = (address.value || '').toLowerCase() || null
-  registrationDialog.value = false
 }
 </script>
 

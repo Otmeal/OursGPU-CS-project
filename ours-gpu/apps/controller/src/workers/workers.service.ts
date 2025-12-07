@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { JobsService } from '../jobs/jobs.service';
 import { MinioService } from '../minio/minio.service';
-import { Job } from '@prisma/client';
+import { Job, JobStatus } from '@prisma/client';
 import { Observable, ReplaySubject } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { JobManagerChainService } from '../chain/job-manager.service';
@@ -21,6 +21,8 @@ type WorkerJobPayload = {
   // Convenience URLs/prefix for storage
   payloadUrl?: string;
   outputPrefix: string;
+  startAt?: number;
+  killAt?: number;
   status:
     | 'REQUESTED'
     | 'SCHEDULED'
@@ -124,7 +126,14 @@ export class WorkersService {
 
   async dispatch(job: Job, workerId: string) {
 
-    const payloadUrl = await this.minio.presignGet(job.objectKey);
+    const startSeconds = Math.floor(new Date(job.startAt).getTime() / 1000);
+    const killSeconds = Math.floor(new Date(job.killAt).getTime() / 1000);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const expiresSeconds = Math.max(
+      3600,
+      killSeconds > nowSeconds ? killSeconds - nowSeconds + 3600 : 7200,
+    );
+    const payloadUrl = await this.minio.presignGet(job.objectKey, expiresSeconds);
 
     const j: WorkerJobPayload = {
       jobId: job.id,
@@ -133,6 +142,8 @@ export class WorkersService {
       entryCommand: job.entryCommand ?? undefined,
       payloadUrl,
       outputPrefix: `outputs/${job.id}/`,
+      startAt: startSeconds,
+      killAt: killSeconds,
       status: 'SCHEDULED',
       workerId,
     };
@@ -145,33 +156,74 @@ export class WorkersService {
     ok: boolean,
     solution?: string,
     metricsJson?: string,
+    executionSeconds?: number,
+    terminated?: boolean,
+    endAtSeconds?: number,
+    executedAtSeconds?: number,
   ) {
     const j = this.jobs.get(jobId);
-    if (!j) return false;
-    j.solution = solution;
-    j.metricsJson = metricsJson;
-    j.status = ok ? 'DONE' : 'FAILED';
-    this.jobs.set(jobId, j);
-    // Persist status first
-    await this.jobsSvc.markResult(jobId, ok);
-    // On success, attempt to finalize on-chain payout if chainJobId is present in metadata
+    if (j) {
+      j.solution = solution;
+      j.metricsJson = metricsJson;
+      j.status = ok ? 'DONE' : 'FAILED';
+      this.jobs.set(jobId, j);
+    }
+    const seconds = this.extractExecutionSeconds(metricsJson, executionSeconds);
+    let actualStartSeconds = executedAtSeconds ?? null;
+    let observedEndSeconds = typeof endAtSeconds === 'number' && endAtSeconds > 0
+      ? Math.floor(endAtSeconds)
+      : Math.floor(Date.now() / 1000);
+    let effectiveSeconds = seconds ?? undefined;
+    let payFull = terminated === true;
+    let chainJobId: number | null = null;
+    let startSeconds = 0;
+    let killSeconds = 0;
+
     try {
-      if (ok) {
-        const job = await this.prisma.job.findUnique({ where: { id: jobId } });
-        const meta: any = job?.metadata as any;
-        const chainJobId = meta?.chainJobId ?? meta?.chain?.jobId;
-        if (chainJobId !== undefined && chainJobId !== null) {
-          const idBig = BigInt(chainJobId);
-          // Fire and forget
-          this.jmChain
-            .completeJob(idBig)
-            .catch((e) =>
-              console.warn(`completeJob failed for ${chainJobId}: ${e?.message}`),
-            );
-        }
+      const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+      const meta: any = job?.metadata as any;
+      chainJobId = (meta?.chainJobId ?? meta?.chain?.jobId) ?? null;
+      startSeconds = job?.startAt ? Math.floor(new Date(job.startAt).getTime() / 1000) : 0;
+      killSeconds = job?.killAt
+        ? Math.floor(new Date(job.killAt).getTime() / 1000)
+        : 0;
+      if (actualStartSeconds === null && startSeconds > 0) {
+        actualStartSeconds = startSeconds;
       }
+      if (terminated === true && killSeconds > 0) {
+        observedEndSeconds = killSeconds;
+      }
+      const maxWindowSeconds = killSeconds > startSeconds ? killSeconds - startSeconds : 0;
+      if (effectiveSeconds === undefined) {
+        const baselineStart = actualStartSeconds ?? startSeconds ?? observedEndSeconds;
+        effectiveSeconds = Math.max(0, observedEndSeconds - baselineStart);
+      }
+      if (maxWindowSeconds > 0 && effectiveSeconds > maxWindowSeconds) {
+        effectiveSeconds = maxWindowSeconds;
+      }
+      payFull = payFull || (killSeconds > 0 && Math.floor(Date.now() / 1000) >= killSeconds);
     } catch (e) {
-      // best-effort
+      // best-effort: fall back to defaults
+    }
+
+    await this.jobsSvc.markResult(
+      jobId,
+      ok,
+      effectiveSeconds ?? seconds ?? undefined,
+      observedEndSeconds,
+      executedAtSeconds,
+    );
+    // On success, attempt to finalize on-chain payout if chainJobId is present in metadata
+    if (chainJobId !== null) {
+      const baselineStart = actualStartSeconds ?? startSeconds;
+      const effectiveSecondsForChain = effectiveSeconds ?? Math.max(0, observedEndSeconds - baselineStart);
+      const idBig = BigInt(chainJobId);
+      // Fire and forget
+      this.jmChain
+        .completeJob(idBig, BigInt(observedEndSeconds), BigInt(effectiveSecondsForChain), payFull, ok)
+        .catch((e) =>
+          console.warn(`completeJob failed for ${chainJobId}: ${e?.message}`),
+        );
     }
     // If solution is provided, persist it to MinIO and store object key in DB
     try {
@@ -211,6 +263,65 @@ export class WorkersService {
           } as any;
         }),
       );
+  }
+
+  private extractExecutionSeconds(metricsJson?: string, fallback?: number) {
+    if (typeof fallback === 'number' && fallback > 0) return fallback;
+    if (!metricsJson) return undefined;
+    try {
+      const parsed = JSON.parse(metricsJson);
+      const ms = (parsed as any)?.ms;
+      if (typeof ms === 'number' && ms >= 0) {
+        const seconds = Math.round(ms / 1000);
+        return seconds > 0 ? seconds : 1;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return undefined;
+  }
+
+  async listScheduledJobs(workerId: string) {
+    const now = Date.now();
+    const windowStart = new Date(now - 5 * 60 * 1000);
+    const jobs = await this.prisma.job.findMany({
+      where: {
+        workerId,
+        status: { in: [JobStatus.REQUESTED, JobStatus.SCHEDULED, JobStatus.PROCESSING] },
+        startAt: { gte: windowStart },
+      },
+      orderBy: { startAt: 'asc' },
+      take: 50,
+    });
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const result: WorkerJobPayload[] = [];
+    for (const job of jobs) {
+      const startSeconds = Math.floor(new Date(job.startAt).getTime() / 1000);
+      const killSeconds = Math.floor(new Date(job.killAt).getTime() / 1000);
+      const expiresSeconds = Math.max(
+        3600,
+        killSeconds > nowSeconds ? killSeconds - nowSeconds + 3600 : 7200,
+      );
+      let payloadUrl: string | undefined;
+      try {
+        payloadUrl = await this.minio.presignGet(job.objectKey, expiresSeconds);
+      } catch {
+        // ignore presign errors here; worker can retry later
+      }
+      result.push({
+        jobId: job.id,
+        jobType: job.jobType,
+        objectKey: job.objectKey,
+        entryCommand: job.entryCommand ?? undefined,
+        payloadUrl,
+        outputPrefix: `outputs/${job.id}/`,
+        startAt: startSeconds,
+        killAt: killSeconds,
+        status: (job.status as any) ?? 'REQUESTED',
+        workerId,
+      });
+    }
+    return result;
   }
   listJobs() {
     return [...this.jobs.values()];

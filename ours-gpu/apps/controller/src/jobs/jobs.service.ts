@@ -48,10 +48,31 @@ export class JobsService {
     });
   }
 
-  markResult(id: string, success: boolean) {
+  markResult(
+    id: string,
+    success: boolean,
+    executedSeconds?: number,
+    endAtSeconds?: number,
+    executedAtSeconds?: number,
+  ) {
+    const endAt =
+      endAtSeconds !== undefined
+        ? new Date(endAtSeconds * 1000)
+        : new Date();
+    const executedAt =
+      executedAtSeconds !== undefined
+        ? new Date(executedAtSeconds * 1000)
+        : executedSeconds !== undefined && endAtSeconds !== undefined
+          ? new Date(Math.max(0, endAtSeconds - executedSeconds) * 1000)
+          : undefined;
     return this.prisma.job.update({
       where: { id },
-      data: { status: success ? JobStatus.DONE : JobStatus.FAILED },
+      data: {
+        status: success ? JobStatus.DONE : JobStatus.FAILED,
+        executedSeconds: executedSeconds ?? undefined,
+        executedAt,
+        endAt,
+      },
     });
   }
 

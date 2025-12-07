@@ -45,10 +45,10 @@
           <v-text-field v-model="jobType" label="Job Type" class="flex-1-1" />
           <v-text-field
             :model-value="quotedRewardDisplay"
-            label="Reward (computed)"
+            label="Staked Tokens (max)"
             class="flex-1-1"
             readonly
-            hint="Determined by on-chain org config"
+            hint="Computed from schedule and org pricing"
             persistent-hint
           />
           <v-select
@@ -127,6 +127,69 @@
     </v-card>
 
     <v-card class="mb-6" variant="tonal">
+      <v-card-title>Schedule</v-card-title>
+      <v-card-text>
+        <div class="d-flex flex-wrap gap-4">
+          <v-text-field
+            v-model="startAtInput"
+            type="datetime-local"
+            label="Start Time"
+            class="flex-1-1"
+            :disabled="creating"
+          />
+          <v-text-field
+            v-model="killAtInput"
+            type="datetime-local"
+            label="Kill Time"
+            class="flex-1-1"
+            :disabled="creating"
+          />
+        </div>
+        <div class="mt-2 text-caption">
+          Duration: {{ durationDisplay }}
+        </div>
+      </v-card-text>
+    </v-card>
+
+    <v-card class="mb-6" variant="tonal">
+      <v-card-title>Pricing Preview</v-card-title>
+      <v-card-text>
+        <div class="d-flex flex-wrap gap-4">
+          <v-text-field
+            :model-value="feePerHourDisplay"
+            label="Fee / hour"
+            class="flex-1-1"
+            readonly
+          />
+          <v-text-field
+            :model-value="quotedRewardDisplay"
+            label="Staked Tokens (max)"
+            class="flex-1-1"
+            readonly
+          />
+          <v-text-field
+            :model-value="distanceDisplay"
+            label="Org Distance"
+            class="flex-1-1"
+            readonly
+          />
+          <v-text-field
+            :model-value="baseRateDisplay"
+            label="baseRate (4dp)"
+            class="flex-1-1"
+            readonly
+          />
+          <v-text-field
+            :model-value="perLevelMarkupDisplay"
+            label="perLevelMarkup (4dp)"
+            class="flex-1-1"
+            readonly
+          />
+        </div>
+      </v-card-text>
+    </v-card>
+
+    <v-card class="mb-6" variant="tonal">
       <v-card-title>Dispatch</v-card-title>
       <v-card-text>
         <div class="d-flex flex-wrap gap-4 align-center">
@@ -191,6 +254,8 @@ type OffchainJobBase = {
   metadata?: any
   verifierObjectKey?: string
   verifierCommand?: string
+  startAt: number
+  killAt: number
 }
 
 type OffchainJobCreate = OffchainJobBase & {
@@ -202,6 +267,20 @@ const runtimeConfig = useRuntimeConfig()
 const apiBase = (runtimeConfig.public.apiBase || '/api').replace(/\/$/, '')
 const s3ProxyBase = (runtimeConfig.public.s3ProxyBase || '/s3').replace(/\/$/, '')
 
+function toInputDate(d: Date) {
+  const pad = (v: number) => v.toString().padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function parseDateInputSeconds(v: string | null | undefined): number | null {
+  if (!v) return null
+  const ms = Date.parse(v)
+  if (!Number.isFinite(ms)) return null
+  return Math.floor(ms / 1000)
+}
+function addMinutes(date: Date, minutes: number) {
+  return new Date(date.getTime() + minutes * 60 * 1000)
+}
+
 // Form state
 const orgId = ref('org-1')
 const jobType = ref('hash_mining')
@@ -209,12 +288,44 @@ const verification = ref<'BUILTIN_HASH' | 'USER_PROGRAM'>('BUILTIN_HASH')
 const priority = ref<number>(0)
 const metadataJson = ref('')
 const metadataError = ref('')
+const startAtInput = ref(toInputDate(addMinutes(new Date(), 3)))
+const killAtInput = ref(toInputDate(addMinutes(new Date(), 8)))
+const feePerHour = ref<bigint | null>(null)
+const distance = ref<bigint | null>(null)
+const baseRate = ref<bigint | null>(null)
+const perLevelMarkup = ref<bigint | null>(null)
 // Chain-computed reward (raw units)
 const quotedReward = ref<bigint | null>(null)
 const quotedRewardDecimals = ref<number>(18)
 const quotedRewardDisplay = computed(() => {
   if (quotedReward.value == null) return '—'
   try { return formatUnits(quotedReward.value, quotedRewardDecimals.value) } catch { return quotedReward.value.toString() }
+})
+const feePerHourDisplay = computed(() => {
+  if (feePerHour.value == null) return '—'
+  try { return `${formatUnits(feePerHour.value, quotedRewardDecimals.value)} / hr` } catch { return feePerHour.value.toString() }
+})
+const baseRateDisplay = computed(() => {
+  if (baseRate.value == null) return '—'
+  try { return (Number(baseRate.value) / 10000).toFixed(4) } catch { return baseRate.value.toString() }
+})
+const perLevelMarkupDisplay = computed(() => {
+  if (perLevelMarkup.value == null) return '—'
+  try { return (Number(perLevelMarkup.value) / 10000).toFixed(4) } catch { return perLevelMarkup.value.toString() }
+})
+const distanceDisplay = computed(() => distance.value != null ? distance.value.toString() : '—')
+const durationSeconds = computed(() => {
+  const s = parseDateInputSeconds(startAtInput.value)
+  const t = parseDateInputSeconds(killAtInput.value)
+  if (!s || !t || t <= s) return 0
+  return t - s
+})
+const durationDisplay = computed(() => {
+  if (!durationSeconds.value) return '—'
+  const hours = durationSeconds.value / 3600
+  const mins = Math.round((durationSeconds.value % 3600) / 60)
+  if (hours >= 1) return `${hours.toFixed(2)} hours`
+  return `${mins} minutes`
 })
 
 const entryCommand = ref('node "$PAYLOAD_PATH"')
@@ -273,6 +384,13 @@ async function fetchQuote(workerWallet: string) {
   // Read directly from OrgRegistry: fee = calculateFee(userOrg, nodeOrg)
   try {
     if (!walletAddress.value) { quotedReward.value = null; return }
+    const startSeconds = parseDateInputSeconds(startAtInput.value)
+    const killSeconds = parseDateInputSeconds(killAtInput.value)
+    if (!startSeconds || !killSeconds || killSeconds <= startSeconds) {
+      quotedReward.value = null
+      feePerHour.value = null
+      return
+    }
     const provider = (window as any).ethereum
     if (!provider) { quotedReward.value = null; return }
     const jmAddress = runtimeConfig.public.jobManagerAddress as `0x${string}`
@@ -311,6 +429,8 @@ async function fetchQuote(workerWallet: string) {
       const normalizedUserOrg = orgTupleToObject(userOrgInfo)
       const normalizedWorkerOrg = orgTupleToObject(workerOrgInfo)
       userOrgName.value = normalizedUserOrg?.name ?? null
+      baseRate.value = normalizedWorkerOrg?.baseRate ?? null
+      perLevelMarkup.value = normalizedWorkerOrg?.perLevelMarkup ?? null
       const w = workers.value.find(w => w.id === selectedWorkerId.value)
       if (w) w.orgName = normalizedWorkerOrg?.name ?? w.orgName ?? null
     } catch {}
@@ -320,8 +440,17 @@ async function fetchQuote(workerWallet: string) {
       functionName: 'calculateFee',
       args: [userOrg, workerOrg],
     }) as bigint
+    feePerHour.value = fee
     console.log(`Quote for userOrg=${userOrg} workerOrg=${workerOrg}: ${fee.toString()}`)
-    quotedReward.value = fee
+    const dist = await publicClient.readContract({
+      address: orgRegistry,
+      abi: OrgRegistryAbi,
+      functionName: 'getDistanceToLCA',
+      args: [workerOrg, userOrg],
+    }) as bigint
+    distance.value = dist
+    const duration = BigInt(killSeconds - startSeconds)
+    quotedReward.value = duration === 0n ? 0n : ((fee * duration + 3599n) / 3600n)
     // Read token decimals to format smallest-unit fee for display
     const erc20Abi = [
       { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8', name: '' }] },
@@ -331,6 +460,7 @@ async function fetchQuote(workerWallet: string) {
   } catch (e) {
     // On failure, clear quote but do not disrupt UX
     quotedReward.value = null
+    feePerHour.value = null
   }
 }
 
@@ -435,6 +565,15 @@ function parseMetadata(): any | undefined {
   }
 }
 
+function toBigIntSafe(v: unknown): bigint | null {
+  if (typeof v === 'bigint') return v
+  if (typeof v === 'number' && Number.isFinite(v)) return BigInt(v)
+  if (typeof v === 'string' && v.trim()) {
+    try { return BigInt(v.trim()) } catch { return null }
+  }
+  return null
+}
+
 async function createJob() {
   if (!walletReadyForJobs.value) {
     alert('Please register your wallet (name + email) before creating a job.')
@@ -443,6 +582,12 @@ async function createJob() {
   creating.value = true
   createdJobId.value = null
   try {
+    const startSeconds = parseDateInputSeconds(startAtInput.value)
+    const killSeconds = parseDateInputSeconds(killAtInput.value)
+    if (!startSeconds || !killSeconds || killSeconds <= startSeconds) {
+      alert('Please provide a valid start and kill time')
+      return
+    }
     const basePayload: OffchainJobBase = {
       orgId: orgId.value,
       jobType: jobType.value,
@@ -451,6 +596,8 @@ async function createJob() {
       verification: verification.value,
       priority: priority.value ?? 0,
       metadata: parseMetadata(),
+      startAt: startSeconds,
+      killAt: killSeconds,
       ...(verification.value === 'USER_PROGRAM' && uploadedVerifier.value
         ? { verifierObjectKey: uploadedVerifier.value, verifierCommand: verifierCommand.value || undefined }
         : {}),
@@ -476,8 +623,7 @@ async function createJob() {
       return
     }
 
-    // 2) Ask controller to sign EIP-712 CreateJob
-    // Reward in raw units from quote
+    // 2) Prep chain clients and resolve addresses
     const jmAddress = runtimeConfig.public.jobManagerAddress
     if (!jmAddress) {
       alert('Missing JobManager address in config')
@@ -499,16 +645,45 @@ async function createJob() {
       { inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ type: 'bool' }], stateMutability: 'nonpayable', type: 'function' },
       { inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], name: 'allowance', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function' }
     ] as const
+    // 3) Request controller signature/quote to get the exact stake needed
+    const signResp = await apiPost<any>(`/jobs/sign-create`, {
+      requester: walletAddress.value,
+      // omit orgId to let backend resolve from chain
+      target: '0x' + '0'.repeat(64),
+      difficulty: 0,
+      worker: workerWallet,
+      startAt: startSeconds,
+      killAt: killSeconds,
+    })
+    // Align local quote with controller-calculated reward/decimals
+    const controllerReward = toBigIntSafe(signResp?.params?.reward) ?? toBigIntSafe(signResp?.quote?.reward)
+    if (controllerReward != null && controllerReward > 0n) {
+      quotedReward.value = controllerReward
+    }
+    const controllerDecimals = Number(signResp?.quote?.tokenDecimals)
+    if (Number.isFinite(controllerDecimals)) {
+      quotedRewardDecimals.value = controllerDecimals
+    }
     const rewardUnits = quotedReward.value as bigint
+    const jobParams = {
+      ...signResp.params,
+      reward: rewardUnits,
+      orgId: toBigIntSafe(signResp?.params?.orgId) ?? signResp?.params?.orgId,
+      difficulty: toBigIntSafe(signResp?.params?.difficulty) ?? signResp?.params?.difficulty,
+      nonce: toBigIntSafe(signResp?.params?.nonce) ?? signResp?.params?.nonce,
+      deadline: toBigIntSafe(signResp?.params?.deadline) ?? signResp?.params?.deadline,
+      startTime: toBigIntSafe(signResp?.params?.startTime) ?? BigInt(startSeconds),
+      killTime: toBigIntSafe(signResp?.params?.killTime) ?? BigInt(killSeconds),
+    }
 
-    // 3) Approve reward to JobManager if needed
+    // 4) Approve reward to JobManager to match the exact stake (force refresh if mismatch)
     const currentAllowance = (await publicClient.readContract({
       address: tokenAddress as `0x${string}`,
       abi: tokenAbi,
       functionName: 'allowance',
       args: [walletAddress.value as `0x${string}`, jmAddress as `0x${string}`],
     })) as bigint
-    if (currentAllowance < rewardUnits) {
+    if (currentAllowance !== rewardUnits) {
       const approveHash = await walletClient.writeContract({
         address: tokenAddress as `0x${string}`,
         abi: tokenAbi,
@@ -519,23 +694,13 @@ async function createJob() {
       await publicClient.waitForTransactionReceipt({ hash: approveHash as `0x${string}` })
     }
 
-    // 4) Request controller signature
-    const signResp = await apiPost<any>(`/jobs/sign-create`, {
-      requester: walletAddress.value,
-      // omit orgId to let backend resolve from chain
-      target: '0x' + '0'.repeat(64),
-      difficulty: 0,
-      reward: rewardUnits.toString(),
-      worker: workerWallet,
-    })
-
     // 5) Call createJobWithControllerSig via viem
     const permit = { value: 0n, deadline: 0n, v: 0, r: ('0x' + '0'.repeat(64)) as `0x${string}`, s: ('0x' + '0'.repeat(64)) as `0x${string}` }
     const txHash = await walletClient.writeContract({
       address: jmAddress as `0x${string}`,
       abi: JobManagerAbi,
       functionName: 'createJobWithControllerSig',
-      args: [signResp.params, signResp.signature as `0x${string}`, permit],
+      args: [jobParams as any, signResp.signature as `0x${string}`, permit],
       chain: foundry,
     })
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` })
@@ -578,6 +743,20 @@ onMounted(() => {
   fetchWorkers()
 })
 
+function refreshQuoteForSelection() {
+  const worker = workers.value.find(w => w.id === selectedWorkerId.value)
+  const workerWallet = worker?.wallet
+  if (!workerWallet || !walletAddress.value) {
+    quotedReward.value = null
+    feePerHour.value = null
+    baseRate.value = null
+    perLevelMarkup.value = null
+    distance.value = null
+    return
+  }
+  void fetchQuote(workerWallet)
+}
+
 // Fetch user's org + name when wallet connects
 // Sync local orgId used for job payloads with store's resolved userOrgId
 watch(storeUserOrgId, (v) => { if (v) orgId.value = v }, { immediate: true })
@@ -614,12 +793,19 @@ watch(verifierFile, (f) => {
 
 // Pre-fetch reward quote whenever worker selection changes
 watch(selectedWorkerId, async (id) => {
-  if (!id) { quotedReward.value = null; return }
-  const worker = workers.value.find(w => w.id === id)
-  const workerWallet = worker?.wallet
-  if (!workerWallet || !walletAddress.value) { quotedReward.value = null; return }
-  await fetchQuote(workerWallet)
+  if (!id) { quotedReward.value = null; feePerHour.value = null; return }
+  refreshQuoteForSelection()
 })
+
+watch(startAtInput, (v) => {
+  const startSeconds = parseDateInputSeconds(v)
+  const killSeconds = parseDateInputSeconds(killAtInput.value)
+  if (startSeconds && killSeconds && killSeconds <= startSeconds) {
+    killAtInput.value = toInputDate(addMinutes(new Date(startSeconds * 1000), 30))
+  }
+  refreshQuoteForSelection()
+})
+watch(killAtInput, () => refreshQuoteForSelection())
 
 </script>
 

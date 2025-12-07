@@ -22,12 +22,23 @@
     </v-btn>
 
     <div class="mt-6">
-      <NuxtLink to="/jobs/new">
-        <v-btn color="primary" variant="tonal">Create a Job</v-btn>
-      </NuxtLink>
-      <NuxtLink to="/jobs">
-        <v-btn class="ml-3" color="primary" variant="elevated">My Jobs</v-btn>
-      </NuxtLink>
+      <v-btn
+        color="primary"
+        variant="tonal"
+        :to="connected ? '/jobs/new' : undefined"
+        :disabled="!connected"
+      >
+        Create a Job
+      </v-btn>
+      <v-btn
+        class="ml-3"
+        color="primary"
+        variant="elevated"
+        :to="connected ? '/jobs' : undefined"
+        :disabled="!connected"
+      >
+        My Jobs
+      </v-btn>
     </div>
   </div>
 </template>

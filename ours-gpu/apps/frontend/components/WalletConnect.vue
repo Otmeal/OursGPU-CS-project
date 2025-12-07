@@ -69,7 +69,6 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn variant="text" :disabled="registering" @click="snoozeDialog">Later</v-btn>
           <v-btn
             color="primary"
             :loading="registering"
@@ -107,7 +106,6 @@ const regName = ref('')
 const regEmail = ref('')
 const regPepper = ref<string>('')
 const registrationDialog = ref(false)
-const snoozedAddress = ref<string | null>(null)
 
 const shortAddress = computed(() => {
   const a = address.value
@@ -130,20 +128,8 @@ const canSubmit = computed(() => {
 
 watch(
   [connected, registrationChecked, walletRegistered, address],
-  ([isConnected, checked, registered, addr]) => {
-    const normalizedAddr = (addr || '').toLowerCase()
-    if (!isConnected) {
-      registrationDialog.value = false
-      snoozedAddress.value = null
-      return
-    }
-    if (checked && !registered && snoozedAddress.value !== normalizedAddr) {
-      registrationDialog.value = true
-    }
-    if (registered) {
-      registrationDialog.value = false
-      snoozedAddress.value = null
-    }
+  ([isConnected, checked, registered]) => {
+    registrationDialog.value = Boolean(isConnected && checked && !registered)
   },
 )
 
@@ -160,16 +146,10 @@ async function submitRegistration() {
       pepperVersion: pepperNum,
     })
     registrationDialog.value = false
-    snoozedAddress.value = null
     await refreshWalletRegistration()
   } catch {
     // Error is surfaced via registrationError alert
   }
-}
-
-function snoozeDialog() {
-  snoozedAddress.value = (address.value || '').toLowerCase() || null
-  registrationDialog.value = false
 }
 </script>
 

@@ -261,15 +261,30 @@ export class GrpcService {
     success,
     solution,
     metricsJson,
+    executionSeconds,
+    terminated,
+    endAt,
+    executedAt,
   }: {
     jobId: string;
     success: boolean;
     solution?: string;
     metricsJson?: string;
+    executionSeconds?: number;
+    terminated?: boolean;
+    endAt?: number;
+    executedAt?: number;
   }) {
-    return {
-      ok: this.workerService.report(jobId, success, solution, metricsJson),
-    };
+    return this.workerService.report(
+      jobId,
+      success,
+      solution,
+      metricsJson,
+      executionSeconds,
+      terminated,
+      endAt,
+      executedAt,
+    ).then((ok) => ({ ok }));
   }
 
   async presignOutput({
@@ -288,5 +303,10 @@ export class GrpcService {
       this.minio.presignGet(objectKey, expiresSeconds ?? 3600),
     ]);
     return { bucket, objectKey, putUrl, getUrl };
+  }
+
+  async listScheduled({ id }: { id: string }) {
+    const jobs = await this.workerService.listScheduledJobs(id);
+    return { jobs };
   }
 }

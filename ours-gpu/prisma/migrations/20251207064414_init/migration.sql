@@ -20,6 +20,11 @@ CREATE TABLE "public"."job" (
     "verification" "public"."verification_method" NOT NULL DEFAULT 'builtin_hash',
     "verifier_object_key" TEXT,
     "verifier_command" TEXT,
+    "start_at" TIMESTAMP(3) NOT NULL,
+    "kill_at" TIMESTAMP(3) NOT NULL,
+    "end_at" TIMESTAMP(3),
+    "executed_seconds" INTEGER,
+    "executed_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 

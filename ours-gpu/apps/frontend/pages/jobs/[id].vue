@@ -47,6 +47,29 @@
       </v-card-text>
     </v-card>
 
+    <v-card class="mb-4" variant="flat">
+      <v-card-title class="text-subtitle-1">Tokens</v-card-title>
+      <v-card-text>
+        <div class="d-flex flex-wrap gap-6">
+          <div>
+            <div class="text-caption text-medium-emphasis">Staked (max)</div>
+            <div>{{ stakedTokensDisplay }}</div>
+          </div>
+          <div>
+            <div class="text-caption text-medium-emphasis">Actual Spent</div>
+            <div>{{ spentTokensDisplay }}</div>
+          </div>
+          <div v-if="paidToWorkerDisplay !== '—'">
+            <div class="text-caption text-medium-emphasis">Paid to Worker</div>
+            <div>{{ paidToWorkerDisplay }}</div>
+          </div>
+        </div>
+        <div v-if="!hasChainInfo" class="text-medium-emphasis mt-2">
+          No on-chain staking info found for this job.
+        </div>
+      </v-card-text>
+    </v-card>
+
     <v-card class="mb-4" variant="tonal">
       <v-card-title class="text-subtitle-1">Result</v-card-title>
       <v-card-text>
@@ -95,6 +118,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
+import { formatUnits } from 'viem'
 
 type JobDetail = {
   id: string
@@ -117,6 +141,19 @@ type JobDetail = {
   solution?: string
   metricsJson?: string
   outputGetUrl?: string
+  chain?: {
+    jobId?: string | number
+    tokenDecimals?: number | null
+    reward?: string
+    stakedTokens?: string
+    spentTokens?: string
+    payoutToWorker?: string
+    refundToRequester?: string
+    feePerHour?: string
+    actualExecutionSeconds?: string
+    actualEndTime?: string
+    paidFullStake?: boolean
+  }
 }
 
 const route = useRoute()
@@ -138,6 +175,27 @@ const metricsPretty = computed(() => {
   if (!m) return ''
   try { return typeof m === 'string' ? m : JSON.stringify(m, null, 2) } catch { return String(m) }
 })
+const hasChainInfo = computed(() => !!job.value?.chain)
+const tokenDecimals = computed(() => {
+  const d = job.value?.chain?.tokenDecimals
+  return Number.isFinite(d as number) ? Number(d) : 18
+})
+function formatTokenAmount(raw?: string | number | bigint | null | undefined) {
+  if (raw === null || raw === undefined) return '—'
+  try {
+    const n = typeof raw === 'bigint' ? raw : BigInt(raw)
+    const s = formatUnits(n, tokenDecimals.value)
+    const num = Number(s)
+    return Number.isFinite(num) ? num.toFixed(4) : s
+  } catch {
+    return String(raw)
+  }
+}
+const stakedTokensDisplay = computed(() =>
+  formatTokenAmount(job.value?.chain?.stakedTokens ?? job.value?.chain?.reward),
+)
+const spentTokensDisplay = computed(() => formatTokenAmount(job.value?.chain?.spentTokens))
+const paidToWorkerDisplay = computed(() => formatTokenAmount(job.value?.chain?.payoutToWorker))
 
 function formatTs(ts?: string) {
   if (!ts) return '—'

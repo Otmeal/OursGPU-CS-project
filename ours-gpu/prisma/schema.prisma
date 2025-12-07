@@ -48,6 +48,16 @@ model Job {
   verifierObjectKey String?            @map("verifier_object_key")
   // If USER_PROGRAM: command to execute verifier program
   verifierCommand   String?            @map("verifier_command")
+  /// Scheduled wall-clock time when the job should start
+  startAt           DateTime           @map("start_at")
+  /// Deadline when the job should be force-terminated if still running
+  killAt            DateTime           @map("kill_at")
+  /// Actual wall-clock end time reported after execution (natural or killed)
+  endAt             DateTime?          @map("end_at")
+  // Actual execution duration (seconds) recorded when worker reports completion
+  executedSeconds   Int?               @map("executed_seconds")
+  /// Actual wall-clock time when the worker began executing the job
+  executedAt        DateTime?          @map("executed_at")
   createdAt         DateTime           @map("created_at") @default(now())
   updatedAt         DateTime           @map("updated_at") @updatedAt
 

@@ -172,8 +172,9 @@ contract OrgRegistry is AccessManaged {
     function calculateFee(uint256 userOrg, uint256 nodeOrg) external view returns (uint256) {
         uint256 dist = getDistanceToLCA(nodeOrg, userOrg);
         uint256 feeUnits = organizations[nodeOrg].baseRate + organizations[nodeOrg].perLevelMarkup * (dist);
-        // Scale by token decimals to return smallest-unit amount when configured
+        // baseRate/perLevelMarkup are expressed with 4 decimals (e.g., 12345 = 1.2345 tokens/hour).
+        // Scale by token decimals and divide by 10_000 to return smallest-unit amount.
         if (tokenDecimals == 0) return feeUnits;
-        return feeUnits * (10 ** uint256(tokenDecimals));
+        return (feeUnits * (10 ** uint256(tokenDecimals))) / 10_000;
     }
 }
