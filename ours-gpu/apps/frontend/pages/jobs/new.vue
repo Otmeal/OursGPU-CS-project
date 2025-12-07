@@ -222,7 +222,13 @@
         </div>
         <div class="mt-3" v-if="createdJobId">
           <v-alert type="success" variant="tonal">
-            Job created: <code>{{ createdJobId }}</code>
+            <div class="d-flex flex-column gap-2">
+              <div>Job created: <code>{{ createdJobId }}</code></div>
+              <div class="d-flex flex-wrap gap-3">
+                <v-btn color="primary" variant="elevated" :to="createdJobLink">View Job</v-btn>
+                <v-btn variant="tonal" :to="jobsListLink">Go to Jobs</v-btn>
+              </div>
+            </div>
           </v-alert>
         </div>
       </v-card-text>
@@ -233,9 +239,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useWalletStore } from '@/stores/wallet'
-import { createPublicClient, createWalletClient, custom, decodeEventLog, formatUnits } from 'viem'
+import { createPublicClient, createWalletClient, custom, decodeEventLog } from 'viem'
 import { foundry } from 'viem/chains'
 import { JobManagerAbi } from '@ours-gpu/shared/contracts/jobManager'
 import { OrgRegistryAbi } from '@ours-gpu/shared/contracts/orgRegistry'
@@ -266,6 +273,7 @@ type OffchainJobCreate = OffchainJobBase & {
 const runtimeConfig = useRuntimeConfig()
 const apiBase = (runtimeConfig.public.apiBase || '/api').replace(/\/$/, '')
 const s3ProxyBase = (runtimeConfig.public.s3ProxyBase || '/s3').replace(/\/$/, '')
+const router = useRouter()
 
 function toInputDate(d: Date) {
   const pad = (v: number) => v.toString().padStart(2, '0')
@@ -279,6 +287,19 @@ function parseDateInputSeconds(v: string | null | undefined): number | null {
 }
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60 * 1000)
+}
+function formatTokenAmount(value: bigint, decimals: number) {
+  try {
+    const decimalsSafe = Number.isFinite(decimals) && decimals >= 0 ? Math.floor(decimals) : 18
+    const multiplier = 10_000n // 4 decimal places
+    const scale = 10n ** BigInt(decimalsSafe)
+    const roundedScaled = (value * multiplier + scale / 2n) / scale
+    const integerPart = roundedScaled / multiplier
+    const fractionalPart = (roundedScaled % multiplier).toString().padStart(4, '0')
+    return `${integerPart.toString()}.${fractionalPart}`
+  } catch {
+    return value.toString()
+  }
 }
 
 // Form state
@@ -299,11 +320,11 @@ const quotedReward = ref<bigint | null>(null)
 const quotedRewardDecimals = ref<number>(18)
 const quotedRewardDisplay = computed(() => {
   if (quotedReward.value == null) return '—'
-  try { return formatUnits(quotedReward.value, quotedRewardDecimals.value) } catch { return quotedReward.value.toString() }
+  return formatTokenAmount(quotedReward.value, quotedRewardDecimals.value)
 })
 const feePerHourDisplay = computed(() => {
   if (feePerHour.value == null) return '—'
-  try { return `${formatUnits(feePerHour.value, quotedRewardDecimals.value)} / hr` } catch { return feePerHour.value.toString() }
+  return `${formatTokenAmount(feePerHour.value, quotedRewardDecimals.value)} / hr`
 })
 const baseRateDisplay = computed(() => {
   if (baseRate.value == null) return '—'
@@ -351,6 +372,8 @@ const selectedWorkerId = ref<string | null>(null)
 // Result
 const creating = ref(false)
 const createdJobId = ref<string | null>(null)
+const jobsListLink = '/jobs'
+const createdJobLink = computed(() => createdJobId.value ? `/jobs/${encodeURIComponent(createdJobId.value)}` : null)
 
 // Wallet (required to create jobs)
 const wallet = useWalletStore()
@@ -731,7 +754,16 @@ async function createJob() {
       wallet: walletAddress.value!,
     }
     const resp = await apiPost<{ id: string }>(`/jobs`, jobCreatePayload)
-    createdJobId.value = (resp as any).id
+    const newJobId = (resp as any).id
+    createdJobId.value = newJobId
+    if (newJobId) {
+      const target = `/jobs/${encodeURIComponent(newJobId)}`
+      try {
+        await router.push(target)
+      } catch (navErr) {
+        console.error('Navigation error after job creation', navErr)
+      }
+    }
   } catch (e: any) {
     alert(`Create job error: ${e?.message || e}`)
   } finally {
@@ -811,5 +843,7 @@ watch(killAtInput, () => refreshQuoteForSelection())
 
 <style scoped>
 .gap-4 { gap: 16px; }
+.gap-3 { gap: 12px; }
+.gap-2 { gap: 8px; }
 .flex-1-1 { flex: 1 1 300px; }
 </style>
