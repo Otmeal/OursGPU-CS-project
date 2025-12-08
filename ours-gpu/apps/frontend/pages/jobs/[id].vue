@@ -17,100 +17,11 @@
       {{ error }}
     </v-alert>
 
-    <v-card class="mb-4" variant="flat">
-      <v-card-title class="text-subtitle-1">Overview</v-card-title>
-      <v-card-text>
-        <div class="d-flex flex-wrap gap-6">
-          <div>
-            <div class="text-caption text-medium-emphasis">Status</div>
-            <v-chip size="small" :color="statusColor(job?.status)" variant="tonal">
-              {{ job?.status || '—' }}
-            </v-chip>
-          </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Type</div>
-            <div>{{ job?.jobType || '—' }}</div>
-          </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Worker</div>
-            <code>{{ job?.workerId || '—' }}</code>
-          </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Created</div>
-            <div>{{ formatTs(job?.createdAt) }}</div>
-          </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Verification</div>
-            <div>{{ job?.verification || '—' }}</div>
-          </div>
-        </div>
-      </v-card-text>
-    </v-card>
-
-    <v-card class="mb-4" variant="flat">
-      <v-card-title class="text-subtitle-1">Tokens</v-card-title>
-      <v-card-text>
-        <div class="d-flex flex-wrap gap-6">
-          <div>
-            <div class="text-caption text-medium-emphasis">Staked (max)</div>
-            <div>{{ stakedTokensDisplay }}</div>
-          </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Actual Spent</div>
-            <div>{{ spentTokensDisplay }}</div>
-          </div>
-          <div v-if="paidToWorkerDisplay !== '—'">
-            <div class="text-caption text-medium-emphasis">Paid to Worker</div>
-            <div>{{ paidToWorkerDisplay }}</div>
-          </div>
-        </div>
-        <div v-if="!hasChainInfo" class="text-medium-emphasis mt-2">
-          No on-chain staking info found for this job.
-        </div>
-      </v-card-text>
-    </v-card>
-
-    <v-card class="mb-4" variant="tonal">
-      <v-card-title class="text-subtitle-1">Result</v-card-title>
-      <v-card-text>
-        <div class="d-flex flex-column gap-3">
-          <div v-if="job?.outputObjectKey">
-            <div class="text-caption text-medium-emphasis">Saved as</div>
-            <code>{{ job.outputObjectKey }}</code>
-            <div class="mt-2">
-              <a v-if="job?.outputGetUrl" :href="job.outputGetUrl" target="_blank" rel="noopener noreferrer">
-                <v-btn color="primary" variant="elevated">Download Result</v-btn>
-              </a>
-              <span v-else class="text-medium-emphasis">No download URL</span>
-            </div>
-          </div>
-          <div v-if="job?.solution">
-            <div class="text-caption text-medium-emphasis">Inline preview</div>
-            <pre class="result-pre">{{ job.solution }}</pre>
-          </div>
-          <div v-if="!job?.outputObjectKey && !job?.solution" class="text-medium-emphasis">No result yet.</div>
-        </div>
-      </v-card-text>
-    </v-card>
-
-    <v-card class="mb-4" variant="flat">
-      <v-card-title class="text-subtitle-1">Metrics</v-card-title>
-      <v-card-text>
-        <div v-if="metrics">
-          <pre class="metrics-pre">{{ metricsPretty }}</pre>
-        </div>
-        <div v-else class="text-medium-emphasis">No metrics reported.</div>
-      </v-card-text>
-    </v-card>
-
-    <v-expansion-panels variant="accordion">
-      <v-expansion-panel>
-        <v-expansion-panel-title>Raw Job JSON</v-expansion-panel-title>
-        <v-expansion-panel-text>
-          <pre class="raw-pre">{{ job }}</pre>
-        </v-expansion-panel-text>
-      </v-expansion-panel>
-    </v-expansion-panels>
+    <JobOverviewCard :job="job" />
+    <JobTokensCard :job="job" />
+    <JobResultCard :job="job" />
+    <JobMetricsCard :metrics="metrics" :metrics-pretty="metricsPretty" />
+    <JobRawPanel :job="job" />
   </div>
   
 </template>
@@ -118,43 +29,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { formatUnits } from 'viem'
-
-type JobDetail = {
-  id: string
-  orgId: string
-  jobType: string
-  status: 'REQUESTED'|'SCHEDULED'|'PROCESSING'|'VERIFYING'|'DONE'|'FAILED'
-  objectKey: string
-  outputObjectKey?: string | null
-  metadata?: any
-  priority: number
-  workerId?: string | null
-  walletId?: string | null
-  entryCommand?: string | null
-  verification: 'BUILTIN_HASH' | 'USER_PROGRAM'
-  verifierObjectKey?: string | null
-  verifierCommand?: string | null
-  createdAt: string
-  updatedAt: string
-  // Runtime fields
-  solution?: string
-  metricsJson?: string
-  outputGetUrl?: string
-  chain?: {
-    jobId?: string | number
-    tokenDecimals?: number | null
-    reward?: string
-    stakedTokens?: string
-    spentTokens?: string
-    payoutToWorker?: string
-    refundToRequester?: string
-    feePerHour?: string
-    actualExecutionSeconds?: string
-    actualEndTime?: string
-    paidFullStake?: boolean
-  }
-}
+import JobOverviewCard from '@/components/jobs/JobOverviewCard.vue'
+import JobTokensCard from '@/components/jobs/JobTokensCard.vue'
+import JobResultCard from '@/components/jobs/JobResultCard.vue'
+import JobMetricsCard from '@/components/jobs/JobMetricsCard.vue'
+import JobRawPanel from '@/components/jobs/JobRawPanel.vue'
+import type { JobDetail } from '@/types/jobs'
 
 const route = useRoute()
 const id = computed(() => String(route.params.id || ''))
@@ -175,43 +55,6 @@ const metricsPretty = computed(() => {
   if (!m) return ''
   try { return typeof m === 'string' ? m : JSON.stringify(m, null, 2) } catch { return String(m) }
 })
-const hasChainInfo = computed(() => !!job.value?.chain)
-const tokenDecimals = computed(() => {
-  const d = job.value?.chain?.tokenDecimals
-  return Number.isFinite(d as number) ? Number(d) : 18
-})
-function formatTokenAmount(raw?: string | number | bigint | null | undefined) {
-  if (raw === null || raw === undefined) return '—'
-  try {
-    const n = typeof raw === 'bigint' ? raw : BigInt(raw)
-    const s = formatUnits(n, tokenDecimals.value)
-    const num = Number(s)
-    return Number.isFinite(num) ? num.toFixed(4) : s
-  } catch {
-    return String(raw)
-  }
-}
-const stakedTokensDisplay = computed(() =>
-  formatTokenAmount(job.value?.chain?.stakedTokens ?? job.value?.chain?.reward),
-)
-const spentTokensDisplay = computed(() => formatTokenAmount(job.value?.chain?.spentTokens))
-const paidToWorkerDisplay = computed(() => formatTokenAmount(job.value?.chain?.payoutToWorker))
-
-function formatTs(ts?: string) {
-  if (!ts) return '—'
-  try { return new Date(ts).toLocaleString() } catch { return ts }
-}
-function statusColor(s?: JobDetail['status']) {
-  switch (s) {
-    case 'DONE': return 'green'
-    case 'FAILED': return 'red'
-    case 'PROCESSING': return 'blue'
-    case 'VERIFYING': return 'purple'
-    case 'SCHEDULED': return 'orange'
-    default: return 'grey'
-  }
-}
-
 async function fetchJob() {
   if (!id.value) return
   loading.value = true
@@ -244,14 +87,5 @@ onBeforeUnmount(() => { clearInterval(timer) })
 </script>
 
 <style scoped>
-.gap-6 { gap: 24px; }
 .ml-3 { margin-left: 12px; }
-.result-pre, .metrics-pre, .raw-pre {
-  background: rgba(0,0,0,0.04);
-  padding: 12px;
-  border-radius: 6px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.raw-pre { max-height: 360px; overflow: auto; }
 </style>

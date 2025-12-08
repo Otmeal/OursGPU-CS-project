@@ -54,7 +54,7 @@
               </v-chip>
             </td>
             <td><code>{{ j.workerId || '—' }}</code></td>
-            <td>{{ formatTs(j.createdAt) }}</td>
+            <td>{{ formatTimestamp(j.createdAt) }}</td>
           </tr>
           <tr v-if="!loading && jobs.length === 0">
             <td colspan="5" class="text-disabled">No jobs found</td>
@@ -118,16 +118,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import type { JobRow } from '@/types/jobs'
+import { formatTimestamp, statusColor } from '@/utils/formatters'
 import { useWalletStore } from '@/stores/wallet'
-
-type JobRow = {
-  id: string
-  jobType: string
-  status: 'REQUESTED'|'SCHEDULED'|'PROCESSING'|'VERIFYING'|'DONE'|'FAILED'
-  workerId?: string | null
-  walletId?: string | null
-  createdAt: string
-}
 
 const runtimeConfig = useRuntimeConfig()
 const apiBase = (runtimeConfig.public.apiBase || '/api').replace(/\/$/, '')
@@ -154,20 +147,6 @@ const regPepper = ref<string>('')
 
 const canSubmit = computed(() => !!regName.value.trim() && !!regEmail.value.trim())
 const walletReady = computed(() => connected.value && walletRegistered.value)
-
-function formatTs(ts: string) {
-  try { return new Date(ts).toLocaleString() } catch { return ts }
-}
-function statusColor(s: JobRow['status']) {
-  switch (s) {
-    case 'DONE': return 'green'
-    case 'FAILED': return 'red'
-    case 'PROCESSING': return 'blue'
-    case 'VERIFYING': return 'purple'
-    case 'SCHEDULED': return 'orange'
-    default: return 'grey'
-  }
-}
 
 async function fetchJobs() {
   const addr = (address.value || '').trim().toLowerCase()

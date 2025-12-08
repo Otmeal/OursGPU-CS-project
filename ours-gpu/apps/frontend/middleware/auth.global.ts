@@ -6,8 +6,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   const wallet = useWalletStore()
 
-  // Ensure we have the latest registration status when connected
-  if (wallet.connected && !wallet.registrationChecked) {
+  // Hydrate wallet state before guarding routes to avoid false redirects
+  await wallet.initialize()
+
+  // Ensure we have the latest registration status
+  if (!wallet.registrationChecked) {
     try {
       await wallet.refreshWalletRegistration()
     } catch {

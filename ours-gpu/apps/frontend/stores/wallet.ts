@@ -34,6 +34,7 @@ export const useWalletStore = defineStore('wallet', () => {
   const walletRegistered = ref<boolean>(false)
   const registering = ref<boolean>(false)
   const registrationError = ref<string>('')
+  const initialized = ref<boolean>(false)
 
   const runtimeConfig = useRuntimeConfig()
   const apiBase = (runtimeConfig.public.apiBase || '/api').replace(/\/$/, '')
@@ -47,24 +48,36 @@ export const useWalletStore = defineStore('wallet', () => {
   // Keep references to listeners so we can remove them
   let accountsChangedHandler: ((accounts: string[]) => void) | null = null
   let chainChangedHandler: ((cidHex: string | number) => void) | null = null
+  let initializePromise: Promise<void> | null = null
+  let registrationPromise: Promise<void> | null = null
 
   async function refreshWalletRegistration() {
-    registrationChecked.value = false
-    walletRegistered.value = false
-    registrationError.value = ''
-    const addr = (address.value || '').trim().toLowerCase()
-    if (!addr) {
-      registrationChecked.value = true
-      return
-    }
-    try {
-      const res = await fetch(`${apiBase}/wallets/${encodeURIComponent(addr)}`)
-      walletRegistered.value = res.ok
-    } catch (err: any) {
-      registrationError.value = err?.message || 'Unable to check wallet registration'
+    if (registrationPromise) return registrationPromise
+
+    registrationPromise = (async () => {
+      registrationChecked.value = false
       walletRegistered.value = false
+      registrationError.value = ''
+      const addr = (address.value || '').trim().toLowerCase()
+      if (!addr) {
+        registrationChecked.value = true
+        return
+      }
+      try {
+        const res = await fetch(`${apiBase}/wallets/${encodeURIComponent(addr)}`)
+        walletRegistered.value = res.ok
+      } catch (err: any) {
+        registrationError.value = err?.message || 'Unable to check wallet registration'
+        walletRegistered.value = false
+      } finally {
+        registrationChecked.value = true
+      }
+    })()
+
+    try {
+      await registrationPromise
     } finally {
-      registrationChecked.value = true
+      registrationPromise = null
     }
   }
 
@@ -264,20 +277,37 @@ export const useWalletStore = defineStore('wallet', () => {
 
   /** Optional: initialize on mount to recover existing connection */
   async function initialize(): Promise<void> {
-    const provider = getEthereumProvider()
-    if (!provider) return
-    try {
-      const accounts = (await provider.request({ method: 'eth_accounts' })) as string[]
-      applyAccounts(accounts)
-      if (connected.value) {
-        const cidHex = (await provider.request({ method: 'eth_chainId' })) as string | number
-        const parsed = typeof cidHex === 'string' ? Number(cidHex) : Number(cidHex)
-        chainId.value = Number.isFinite(parsed) ? parsed : null
-        wireEvents()
-        await resolveUserOrgIfPossible()
+    if (initialized.value) return
+    if (initializePromise) return initializePromise
+
+    initializePromise = (async () => {
+      const provider = getEthereumProvider()
+      if (!provider) {
+        initialized.value = true
+        return
       }
-    } catch (error) {
-      console.error('Wallet initialize failed:', error)
+      try {
+        const accounts = (await provider.request({ method: 'eth_accounts' })) as string[]
+        applyAccounts(accounts)
+        if (connected.value) {
+          const cidHex = (await provider.request({ method: 'eth_chainId' })) as string | number
+          const parsed = typeof cidHex === 'string' ? Number(cidHex) : Number(cidHex)
+          chainId.value = Number.isFinite(parsed) ? parsed : null
+          wireEvents()
+          await resolveUserOrgIfPossible()
+        }
+        await refreshWalletRegistration()
+      } catch (error) {
+        console.error('Wallet initialize failed:', error)
+      } finally {
+        initialized.value = true
+      }
+    })()
+
+    try {
+      await initializePromise
+    } finally {
+      initializePromise = null
     }
   }
 
@@ -351,6 +381,7 @@ export const useWalletStore = defineStore('wallet', () => {
     walletRegistered,
     registering,
     registrationError,
+    initialized,
     // actions
     connect,
     disconnect,
