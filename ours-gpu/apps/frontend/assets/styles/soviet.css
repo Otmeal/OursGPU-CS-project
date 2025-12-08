@@ -238,6 +238,165 @@ code {
   box-shadow: inset 0 0 0 1px rgba(214, 43, 43, 0.2);
 }
 
+.schedule-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.schedule-card .schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  align-items: center;
+}
+
+.schedule-card .timeline-meta {
+  gap: 12px;
+}
+
+.schedule-card .schedule-duration-chip {
+  background: rgba(224, 179, 67, 0.12);
+  border: 1px solid rgba(224, 179, 67, 0.5);
+  color: var(--soviet-text-strong);
+  box-shadow: 0 0 12px rgba(214, 43, 43, 0.2);
+}
+
+.schedule-card .timeline-shell {
+  position: relative;
+  margin-top: 12px;
+  padding: 20px 6px 42px;
+  border-radius: 12px;
+}
+
+.schedule-card .timeline-shell--empty {
+  opacity: 0.65;
+  border: 1px dashed rgba(224, 179, 67, 0.35);
+}
+
+.schedule-card .timeline-rail {
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(214, 43, 43, 0.5), rgba(90, 241, 242, 0.35));
+  position: relative;
+  overflow: hidden;
+}
+
+.schedule-card .job-window {
+  position: absolute;
+  top: 20px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--soviet-gold);
+  box-shadow: 0 2px 12px rgba(224, 179, 67, 0.3);
+  min-width: 32px;
+  z-index: 1;
+}
+
+.schedule-card .job-window__label {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(11, 10, 15, 0.85);
+  color: var(--soviet-text-strong);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  border: 1px solid rgba(224, 179, 67, 0.4);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  z-index: 3;
+}
+
+.schedule-card .other-job {
+  position: absolute;
+  top: 24px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(224, 179, 67, 0.35);
+  box-shadow: 0 0 0 1px rgba(224, 179, 67, 0.4);
+  min-width: 12px;
+  z-index: 2;
+}
+
+.schedule-card .other-job__label {
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--soviet-muted);
+  background: rgba(11, 10, 15, 0.8);
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(224, 179, 67, 0.25);
+  white-space: nowrap;
+  z-index: 3;
+}
+
+.schedule-card .other-job--active {
+  background: rgba(90, 241, 242, 0.6);
+  box-shadow: 0 0 0 1px rgba(90, 241, 242, 0.35), 0 0 10px rgba(90, 241, 242, 0.2);
+}
+
+.schedule-card .other-job--pending {
+  background: rgba(214, 43, 43, 0.9);
+  box-shadow: 0 0 0 1px rgba(214, 43, 43, 0.3), 0 0 10px rgba(214, 43, 43, 0.15);
+}
+
+.schedule-card .now-indicator {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.schedule-card .now-line {
+  width: 2px;
+  height: 36px;
+  background: rgba(224, 179, 67, 0.5);
+}
+
+.schedule-card .now-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--soviet-cyan);
+  border: 2px solid rgba(11, 10, 15, 0.9);
+  box-shadow: 0 0 0 3px rgba(90, 241, 242, 0.18);
+  margin-top: 1px;
+}
+
+.schedule-card .now-tag {
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  background: rgba(21, 19, 30, 0.85);
+  border: 1px solid rgba(224, 179, 67, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--soviet-text-body);
+}
+
+.schedule-card .now-indicator--before .now-dot {
+  background: #5c6bc0;
+  box-shadow: 0 0 0 3px rgba(92, 107, 192, 0.2);
+}
+
+.schedule-card .now-indicator--after .now-dot {
+  background: #90a4ae;
+  box-shadow: 0 0 0 3px rgba(144, 164, 174, 0.18);
+}
+
+.schedule-card .flex-1-1 {
+  flex: 1 1 300px;
+  min-width: 280px;
+}
+
 .accent-tile strong {
   display: block;
   color: var(--soviet-text-strong);

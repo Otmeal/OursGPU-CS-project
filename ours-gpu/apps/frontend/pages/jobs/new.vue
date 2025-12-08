@@ -2,6 +2,21 @@
   <div class="pa-4">
     <h1 class="text-h5 mb-4">Create Job</h1>
 
+    <v-alert
+      v-if="createdJobId"
+      type="success"
+      variant="tonal"
+      class="mb-4"
+    >
+      <div class="d-flex flex-column" style="gap: 12px;">
+        <div>Job created: <code>{{ createdJobId }}</code></div>
+        <div class="d-flex flex-wrap" style="gap: 12px;">
+          <v-btn color="primary" variant="elevated" :to="createdJobLink">View Job</v-btn>
+          <v-btn variant="tonal" :to="jobsListLink">Go to Jobs</v-btn>
+        </div>
+      </div>
+    </v-alert>
+
     <JobsCreatePayloadCard
       :payload-file="payloadFile"
       :object-key="objectKey"
@@ -40,11 +55,23 @@
       @upload-verifier="uploadVerifier"
     />
 
+    <JobsCreateDispatchCard
+      :worker-items="workerItems"
+      :selected-worker-id="selectedWorkerId"
+      :workers-loading="workersLoading"
+      :wallet-address="walletAddress"
+      :registration-checked="registrationChecked"
+      :wallet-registered="walletRegistered"
+      @update:selectedWorkerId="selectedWorkerId = $event"
+    />
+
     <JobsCreateScheduleCard
       :start-at-input="startAtInput"
       :kill-at-input="killAtInput"
       :creating="creating"
       :duration-display="durationDisplay"
+      :schedule-error="scheduleError"
+      :other-jobs="overlappingJobs"
       @update:startAtInput="startAtInput = $event"
       @update:killAtInput="killAtInput = $event"
     />
@@ -57,25 +84,18 @@
       :per-level-markup-display="perLevelMarkupDisplay"
     />
 
-    <JobsCreateDispatchCard
-      :worker-items="workerItems"
-      :selected-worker-id="selectedWorkerId"
-      :workers-loading="workersLoading"
-      :creating="creating"
-      :object-key="objectKey"
-      :uploaded-payload="uploadedPayload"
-      :wallet-ready-for-jobs="walletReadyForJobs"
-      :wallet-address="walletAddress"
-      :registration-checked="registrationChecked"
-      :wallet-registered="walletRegistered"
-      :created-job-id="createdJobId"
-      :created-job-link="createdJobLink"
-      :jobs-list-link="jobsListLink"
-      @update:selectedWorkerId="selectedWorkerId = $event"
-      @create="createJob"
-    />
+    <div class="d-flex justify-end mt-4">
+      <v-btn
+        color="primary"
+        :loading="creating"
+        :disabled="disableCreate"
+        @click="createJob"
+      >
+        Create Job
+      </v-btn>
+    </div>
   </div>
-  
+
 </template>
 
 <script setup lang="ts">
@@ -161,6 +181,40 @@ const perLevelMarkupDisplay = computed(() => {
 const distanceDisplay = computed(() => distance.value != null ? distance.value.toString() : '—')
 const durationSeconds = computed(() => secondsBetweenInputs(startAtInput.value, killAtInput.value))
 const durationDisplay = computed(() => formatDurationDisplay(durationSeconds.value))
+const scheduleValidation = computed(() => {
+  const startSeconds = parseDateInputSeconds(startAtInput.value)
+  const killSeconds = parseDateInputSeconds(killAtInput.value)
+  const nowSeconds = Math.floor(Date.now() / 1000)
+  if (!startSeconds || !killSeconds) {
+    return { valid: false, message: 'Pick start and kill times.' }
+  }
+  if (startSeconds < nowSeconds) {
+    return { valid: false, message: 'Start time cannot be in the past.' }
+  }
+  if (killSeconds <= startSeconds) {
+    return { valid: false, message: 'Kill time must be after start time.' }
+  }
+  return { valid: true, message: '' }
+})
+const scheduleError = computed(() => scheduleValidation.value.valid ? '' : scheduleValidation.value.message)
+const overlappingJobs = computed(() => {
+  if (!scheduleValidation.value.valid || !selectedWorkerId.value) return []
+  const startSeconds = parseDateInputSeconds(startAtInput.value)
+  const killSeconds = parseDateInputSeconds(killAtInput.value)
+  if (!startSeconds || !killSeconds) return []
+  return allJobs.value
+    .filter(j => j.workerId === selectedWorkerId.value && relevantStatuses.has(String(j.status || '').toUpperCase()))
+    .map(j => {
+      const startParsed = j.startAt ? Math.floor(Date.parse(String(j.startAt)) / 1000) : null
+      const endParsed = j.killAt ? Math.floor(Date.parse(String(j.killAt)) / 1000) : null
+      const start = Number.isFinite(startParsed) ? startParsed : null
+      const end = Number.isFinite(endParsed) ? endParsed : null
+      return { id: j.id, startSeconds: start, killSeconds: end, status: j.status }
+    })
+    .filter(j => j.startSeconds != null && j.killSeconds != null && j.killSeconds > j.startSeconds)
+    .filter(j => j.startSeconds! < killSeconds && j.killSeconds! > startSeconds)
+    .sort((a, b) => (a.startSeconds ?? 0) - (b.startSeconds ?? 0))
+})
 
 const entryCommand = ref('node "$PAYLOAD_PATH"')
 
@@ -181,6 +235,10 @@ const uploadedVerifier = ref<string | null>(null)
 const workers = ref<WorkerRow[]>([])
 const workersLoading = ref(false)
 const selectedWorkerId = ref<string | null>(null)
+type JobScheduleRow = { id: string, workerId?: string | null, startAt?: string | Date | null, killAt?: string | Date | null, status?: string | null }
+const allJobs = ref<JobScheduleRow[]>([])
+const jobsLoading = ref(false)
+const jobsLoaded = ref(false)
 
 // Result
 const creating = ref(false)
@@ -205,9 +263,20 @@ const verificationItems: { title: string, value: VerificationType }[] = [
 ]
 
 const workerItems = computed(() => workers.value.map(w => ({
-  title: `${w.id} (org=${w.orgName ?? (isNumeric(w.orgId) ? `#${w.orgId}` : w.orgId)}, running=${w.running}/${w.concurrency}) ${w.wallet ? '— ' + w.wallet : ''}`,
+  title: `${w.id} (org=${w.orgName ?? (isNumeric(w.orgId) ? `#${w.orgId}` : w.orgId)})${w.wallet ? ` — ${w.wallet}` : ''}`,
   value: w.id,
 })))
+
+const relevantStatuses = new Set(['REQUESTED', 'SCHEDULED', 'PROCESSING', 'VERIFYING'])
+
+const disableCreate = computed(() =>
+  creating.value
+  || !objectKey.value
+  || !uploadedPayload.value
+  || !selectedWorkerId.value
+  || !walletReadyForJobs.value
+  || !scheduleValidation.value.valid,
+)
 
 function isNumeric(v: string | number) {
   return /^\d+$/.test(String(v))
@@ -220,7 +289,8 @@ async function fetchQuote(workerWallet: string) {
     if (!walletAddress.value) { quotedReward.value = null; return }
     const startSeconds = parseDateInputSeconds(startAtInput.value)
     const killSeconds = parseDateInputSeconds(killAtInput.value)
-    if (!startSeconds || !killSeconds || killSeconds <= startSeconds) {
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    if (!startSeconds || !killSeconds || killSeconds <= startSeconds || startSeconds < nowSeconds) {
       quotedReward.value = null
       feePerHour.value = null
       return
@@ -326,6 +396,22 @@ async function fetchWorkers() {
   }
 }
 
+async function fetchJobsIfNeeded() {
+  if (jobsLoaded.value || jobsLoading.value) return
+  jobsLoading.value = true
+  try {
+    const res = await fetch(`${apiBase}/jobs`)
+    if (res.ok) {
+      allJobs.value = await res.json()
+      jobsLoaded.value = true
+    }
+  } catch (e) {
+    console.warn('Failed to load jobs for schedule timeline', e)
+  } finally {
+    jobsLoading.value = false
+  }
+}
+
 function toS3Proxy(url: string) {
   if (!s3ProxyBase) return url
   const u = new URL(url)
@@ -404,9 +490,13 @@ async function createJob() {
   creating.value = true
   createdJobId.value = null
   try {
+    if (!scheduleValidation.value.valid) {
+      alert(scheduleValidation.value.message || 'Please provide a valid start and kill time')
+      return
+    }
     const startSeconds = parseDateInputSeconds(startAtInput.value)
     const killSeconds = parseDateInputSeconds(killAtInput.value)
-    if (!startSeconds || !killSeconds || killSeconds <= startSeconds) {
+    if (!startSeconds || !killSeconds) {
       alert('Please provide a valid start and kill time')
       return
     }
@@ -571,6 +661,11 @@ function refreshQuoteForSelection() {
     distance.value = null
     return
   }
+  if (!scheduleValidation.value.valid) {
+    quotedReward.value = null
+    feePerHour.value = null
+    return
+  }
   void fetchQuote(workerWallet)
 }
 
@@ -606,6 +701,7 @@ watch(verifierFile, (f) => {
 
 watch(selectedWorkerId, async (id) => {
   if (!id) { quotedReward.value = null; feePerHour.value = null; return }
+  await fetchJobsIfNeeded()
   refreshQuoteForSelection()
 })
 
