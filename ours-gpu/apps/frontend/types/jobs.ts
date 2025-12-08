@@ -40,6 +40,11 @@ export type JobDetail = {
   verification: VerificationType
   verifierObjectKey?: string | null
   verifierCommand?: string | null
+  startAt: string
+  killAt: string
+  endAt?: string | null
+  executedAt?: string | null
+  executedSeconds?: number | null
   createdAt: string
   updatedAt: string
   solution?: string

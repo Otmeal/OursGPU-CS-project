@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import type { ClientGrpc } from '@nestjs/microservices';
 import { randomUUID } from 'crypto';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -531,9 +531,16 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     const start = Date.now();
     const executedAtSeconds = Math.floor(start / 1000);
     await this.markProcessing(job.jobId, executedAtSeconds);
+    let terminatedByKillAt = false;
+    let killTimer: NodeJS.Timeout | undefined;
+    const clearKillTimer = () => {
+      if (killTimer) clearTimeout(killTimer);
+      killTimer = undefined;
+    };
     try {
       if (!job.entryCommand) {
         const endSeconds = Math.floor(Date.now() / 1000);
+        const terminated = this.hasReachedKillTime(job);
         await firstValueFrom(
           this.svc.reportResult({
             jobId: job.jobId,
@@ -542,7 +549,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
             success: true,
             metricsJson: '{}',
             executionSeconds: 0,
-            terminated: this.hasReachedKillTime(job),
+            terminated,
             endAt: endSeconds,
             executedAt: executedAtSeconds,
           }),
@@ -569,28 +576,102 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
 
       // Execute the entry command using a shell so env vars can be expanded
       const cmd = job.entryCommand;
-      const { stdout, stderr, code } = await new Promise<{
+      const killProcessGroup = (child: import('child_process').ChildProcess) => {
+        if (child.pid) {
+          try {
+            // Kill the entire process group (works on POSIX)
+            process.kill(-child.pid, 'SIGTERM');
+          } catch {
+            // ignore ESRCH/EPERM; fall back to direct kill below
+          }
+        }
+        if (!child.killed) {
+          try {
+            child.kill('SIGTERM');
+          } catch {
+            // best effort
+          }
+        }
+        setTimeout(() => {
+          if (child.exitCode === null && !child.killed) {
+            if (child.pid) {
+              try {
+                process.kill(-child.pid, 'SIGKILL');
+              } catch {
+                // ignore
+              }
+            }
+            try {
+              child.kill('SIGKILL');
+            } catch {
+              // ignore
+            }
+          }
+        }, 5000);
+      };
+      const { stdout, stderr, code, signal } = await new Promise<{
         stdout: string;
         stderr: string;
-        code: number;
-      }>((resolve) => {
-        exec(
-          cmd,
-          { env, cwd: effectiveWorkDir, shell: '/bin/sh' },
-          (
-            error: import('child_process').ExecException | null,
-            stdout,
-            stderr,
-          ) => {
-            const code = error?.code ?? 0;
-            resolve({ stdout, stderr, code });
-          },
-        );
+        code: number | null;
+        signal: NodeJS.Signals | null;
+      }>((resolve, reject) => {
+        const child = spawn(cmd, [], {
+          env,
+          cwd: effectiveWorkDir,
+          shell: '/bin/sh',
+          detached: true,
+        });
+        let stdoutBuf = '';
+        let stderrBuf = '';
+        child.stdout?.on('data', (chunk: Buffer) => {
+          stdoutBuf += chunk.toString();
+        });
+        child.stderr?.on('data', (chunk: Buffer) => {
+          stderrBuf += chunk.toString();
+        });
+        child.on('error', (err) => {
+          clearKillTimer();
+          reject(err);
+        });
+        child.on('close', (exitCode, exitSignal) => {
+          clearKillTimer();
+          resolve({
+            stdout: stdoutBuf,
+            stderr: stderrBuf,
+            code: exitCode,
+            signal: exitSignal,
+          });
+        });
+        if (job.killAt) {
+          const delayMs = Math.floor(Number(job.killAt) * 1000 - Date.now());
+          const killNow = () => {
+            terminatedByKillAt = true;
+            clearKillTimer();
+            killProcessGroup(child);
+          };
+          if (Number.isFinite(delayMs) && delayMs <= 0) {
+            killNow();
+          } else if (Number.isFinite(delayMs)) {
+            killTimer = setTimeout(() => {
+              this.logger.warn(
+                `KillAt reached; terminating job=${job.jobId} (killAt=${job.killAt})`,
+              );
+              killNow();
+            }, delayMs);
+          }
+        }
       });
 
       const ms = Date.now() - start;
-      const ok = code === 0;
-      const metrics = { ms, stderr: stderr?.slice(0, 4096) };
+      const terminated = terminatedByKillAt || this.hasReachedKillTime(job);
+      const exitCode = code ?? (terminatedByKillAt ? 1 : 0);
+      const ok = exitCode === 0 && !terminatedByKillAt;
+      const metrics: Record<string, unknown> = {
+        ms,
+        stderr: stderr?.slice(0, 4096),
+      };
+      if (signal) metrics.signal = signal;
+      if (terminatedByKillAt) metrics.killedByKillAt = true;
       const executionSeconds = Math.max(1, Math.round(ms / 1000));
       const endSeconds = Math.floor(Date.now() / 1000);
       await firstValueFrom(
@@ -601,16 +682,24 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
           success: ok,
           metricsJson: JSON.stringify(metrics),
           executionSeconds,
-          terminated: this.hasReachedKillTime(job),
+          terminated,
           endAt: endSeconds,
           executedAt: executedAtSeconds,
         }),
       );
-      this.logger.debug(`Executed job=${job.jobId} code=${code} ms=${ms}`);
+      this.logger.debug(
+        `Executed job=${job.jobId} code=${exitCode} ms=${ms} terminated=${terminated}`,
+      );
     } catch (err: unknown) {
+      clearKillTimer();
       const ms = Date.now() - start;
       const e = err as Error;
-      const metrics = { error: e?.message ?? String(err), ms };
+      const metrics: Record<string, unknown> = {
+        error: e?.message ?? String(err),
+        ms,
+      };
+      if (terminatedByKillAt) metrics.killedByKillAt = true;
+      const terminated = terminatedByKillAt || this.hasReachedKillTime(job);
       const executionSeconds = Math.max(1, Math.round(ms / 1000));
       const endSeconds = Math.floor(Date.now() / 1000);
       await firstValueFrom(
@@ -621,7 +710,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
           success: false,
           metricsJson: JSON.stringify(metrics),
           executionSeconds,
-          terminated: this.hasReachedKillTime(job),
+          terminated,
           endAt: endSeconds,
           executedAt: executedAtSeconds,
         }),

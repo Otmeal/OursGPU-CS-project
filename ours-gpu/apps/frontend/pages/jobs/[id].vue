@@ -18,6 +18,7 @@
     </v-alert>
 
     <JobOverviewCard :job="job" />
+    <JobTimingCard :job="job" />
     <JobTokensCard :job="job" />
     <JobResultCard :job="job" />
     <JobMetricsCard :metrics="metrics" :metrics-pretty="metricsPretty" />
@@ -30,6 +31,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import JobOverviewCard from '@/components/jobs/JobOverviewCard.vue'
+import JobTimingCard from '@/components/jobs/JobTimingCard.vue'
 import JobTokensCard from '@/components/jobs/JobTokensCard.vue'
 import JobResultCard from '@/components/jobs/JobResultCard.vue'
 import JobMetricsCard from '@/components/jobs/JobMetricsCard.vue'

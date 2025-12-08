@@ -18,10 +18,6 @@
           <code>{{ job?.workerId || '—' }}</code>
         </div>
         <div>
-          <div class="text-caption text-medium-emphasis">Created</div>
-          <div>{{ formatTimestamp(job?.createdAt) }}</div>
-        </div>
-        <div>
           <div class="text-caption text-medium-emphasis">Verification</div>
           <div>{{ job?.verification || '—' }}</div>
         </div>
@@ -32,7 +28,7 @@
 
 <script setup lang="ts">
 import type { JobDetail } from '@/types/jobs'
-import { formatTimestamp, statusColor } from '@/utils/formatters'
+import { statusColor } from '@/utils/formatters'
 
 defineProps<{
   job: JobDetail | null

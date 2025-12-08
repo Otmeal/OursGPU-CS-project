@@ -255,7 +255,6 @@ async function fetchQuote(workerWallet: string) {
         publicClient.readContract({ address: orgRegistry, abi: OrgRegistryAbi, functionName: 'organizations', args: [workerOrg] }) as Promise<any>,
       ])
 
-      console.log('User org info:', userOrgInfo, 'Worker org info:', workerOrgInfo)
       const normalizedUserOrg = orgTupleToObject(userOrgInfo)
       const normalizedWorkerOrg = orgTupleToObject(workerOrgInfo)
       userOrgName.value = normalizedUserOrg?.name ?? null
@@ -271,7 +270,6 @@ async function fetchQuote(workerWallet: string) {
       args: [userOrg, workerOrg],
     }) as bigint
     feePerHour.value = fee
-    console.log(`Quote for userOrg=${userOrg} workerOrg=${workerOrg}: ${fee.toString()}`)
     const dist = await publicClient.readContract({
       address: orgRegistry,
       abi: OrgRegistryAbi,
