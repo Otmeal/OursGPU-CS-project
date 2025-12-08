@@ -1,5 +1,5 @@
 <template>
-  <v-card class="mb-6" variant="tonal">
+  <v-card class="mb-6" variant="flat">
     <v-card-title>Payload</v-card-title>
     <v-card-text>
       <div class="d-flex flex-wrap align-center" style="gap: 16px;">

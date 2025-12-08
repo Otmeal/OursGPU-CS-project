@@ -1,5 +1,5 @@
 <template>
-  <v-card class="mb-6" variant="tonal">
+  <v-card class="mb-6" variant="flat">
     <v-card-title>Schedule</v-card-title>
     <v-card-text>
       <div class="d-flex flex-wrap" style="gap: 16px;">

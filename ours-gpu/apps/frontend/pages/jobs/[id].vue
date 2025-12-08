@@ -2,7 +2,7 @@
   <div class="pa-4">
     <div class="d-flex align-center justify-space-between mb-4">
       <div>
-        <h1 class="text-h5 mb-1">Job Detail</h1>
+        <h1 class="mb-1">Job Detail</h1>
         <div class="text-caption text-medium-emphasis">ID: <code>{{ id }}</code></div>
       </div>
       <div>

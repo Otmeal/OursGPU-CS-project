@@ -1,0 +1,250 @@
+@import url('https://fonts.googleapis.com/css2?family=Russo+One&family=Space+Grotesk:wght@400;500;600&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --soviet-red: #d62b2b;
+  --soviet-gold: #e0b343;
+  --soviet-cyan: #5af1f2;
+  --soviet-bg: #0b0a0f;
+  --soviet-surface: #15131e;
+  --soviet-border: #d62b2b;
+  --soviet-muted: #a4a0a0;
+  --soviet-grid: rgba(255, 255, 255, 0.03);
+  --soviet-text-body: #f1f2f5;
+  --soviet-text-strong: #f4f6ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--soviet-bg);
+  color: var(--soviet-text-body);
+  font-family: 'Space Grotesk', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: 0.01em;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(216, 53, 60, 0.08), transparent 45%),
+    radial-gradient(circle at 70% 10%, rgba(90, 241, 242, 0.08), transparent 45%),
+    linear-gradient(180deg, rgba(214, 43, 43, 0.06) 0%, rgba(11, 10, 15, 0.6) 45%, rgba(11, 10, 15, 1) 100%),
+    linear-gradient(90deg, var(--soviet-grid) 1px, transparent 1px),
+    linear-gradient(var(--soviet-grid) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+  background-position: 0 0, 0 0, 0 0, -12px -12px, -12px -12px;
+}
+
+a {
+  color: var(--soviet-cyan);
+  text-decoration: none;
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+a:hover {
+  color: var(--soviet-gold);
+  text-shadow: 0 0 12px rgba(90, 241, 242, 0.5);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Russo One', 'Space Grotesk', sans-serif;
+  letter-spacing: 0.08em;
+  color: var(--soviet-text-strong);
+}
+
+code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(224, 179, 67, 0.35);
+}
+
+.soviet-app {
+  background: radial-gradient(circle at 30% 0%, rgba(214, 43, 43, 0.15), transparent 40%), var(--soviet-bg);
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.soviet-app::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(224, 179, 67, 0.05) 0%, rgba(214, 43, 43, 0.04) 50%, rgba(90, 241, 242, 0.05) 100%);
+  mix-blend-mode: screen;
+  opacity: 0.6;
+}
+
+.soviet-app-bar {
+  background: linear-gradient(120deg, rgba(214, 43, 43, 0.92) 0%, rgba(21, 19, 30, 0.94) 65%);
+  border-bottom: 1px solid rgba(224, 179, 67, 0.45);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(214, 43, 43, 0.15);
+}
+
+.soviet-app-bar .v-toolbar-title {
+  font-family: 'Russo One', 'Space Grotesk', sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #f8f4e6;
+}
+
+.soviet-shell {
+  position: relative;
+  padding: 22px;
+  border: 1px solid rgba(214, 43, 43, 0.35);
+  background: linear-gradient(160deg, rgba(21, 19, 30, 0.92), rgba(11, 10, 15, 0.96));
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(90, 241, 242, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.soviet-shell::before,
+.soviet-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.soviet-shell::before {
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(224, 179, 67, 0.12),
+    rgba(224, 179, 67, 0.12) 1px,
+    transparent 1px,
+    transparent 18px
+  );
+  mix-blend-mode: soft-light;
+  opacity: 0.3;
+}
+
+.soviet-shell::after {
+  background: radial-gradient(circle at 80% 10%, rgba(90, 241, 242, 0.15), transparent 25%);
+  opacity: 0.6;
+}
+
+.soviet-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(214, 43, 43, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 18px 36px -18px rgba(0, 0, 0, 0.8),
+    0 0 24px -12px rgba(90, 241, 242, 0.35);
+  border-radius: 12px;
+  color: #f7f3e8;
+}
+
+.soviet-card .v-card-title {
+  font-family: 'Russo One', 'Space Grotesk', sans-serif;
+  letter-spacing: 0.08em;
+  color: var(--soviet-text-strong);
+}
+
+.soviet-card .v-card-text {
+  color: var(--soviet-text-body);
+}
+
+.soviet-btn {
+  font-family: 'Russo One', 'Space Grotesk', sans-serif;
+  letter-spacing: 0.08em;
+  border-radius: 10px;
+  border: 1px solid rgba(224, 179, 67, 0.5);
+  background: linear-gradient(135deg, rgba(214, 43, 43, 0.9), rgba(21, 19, 30, 0.9));
+  box-shadow:
+    0 0 0 1px rgba(214, 43, 43, 0.2),
+    0 0 14px rgba(214, 43, 43, 0.4);
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.soviet-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(90, 241, 242, 0.8);
+  box-shadow:
+    0 0 0 1px rgba(90, 241, 242, 0.35),
+    0 0 18px rgba(90, 241, 242, 0.45);
+}
+
+.soviet-btn.v-btn--disabled {
+  opacity: 0.65;
+  filter: grayscale(0.3);
+}
+
+.soviet-chip {
+  border-radius: 999px;
+  font-family: 'Share Tech Mono', ui-monospace, monospace;
+  border: 1px solid rgba(224, 179, 67, 0.6);
+  background: rgba(21, 19, 30, 0.8);
+  color: #f7f3e8;
+  box-shadow: 0 0 12px rgba(214, 43, 43, 0.25);
+}
+
+.soviet-input .v-field__overlay {
+  background-color: rgba(21, 19, 30, 0.9);
+}
+
+.soviet-input .v-field__outline__start,
+.soviet-input .v-field__outline__end {
+  border-color: rgba(224, 179, 67, 0.4);
+}
+
+.soviet-input input,
+.soviet-input textarea {
+  font-family: 'Share Tech Mono', ui-monospace, monospace;
+  color: #f7f3e8;
+}
+
+.soviet-divider {
+  border-color: rgba(224, 179, 67, 0.4);
+}
+
+.soviet-hero {
+  position: relative;
+  padding: 28px;
+  margin-bottom: 24px;
+  border: 1px solid rgba(214, 43, 43, 0.45);
+  background: linear-gradient(120deg, rgba(21, 19, 30, 0.92), rgba(214, 43, 43, 0.12));
+  box-shadow: 0 30px 50px rgba(0, 0, 0, 0.55);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.soviet-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(224, 179, 67, 0.12), transparent 35%, rgba(90, 241, 242, 0.12));
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.soviet-hero h1 {
+  margin-bottom: 10px;
+}
+
+.soviet-hero p {
+  color: var(--soviet-text-body);
+  max-width: 720px;
+}
+
+.accent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.accent-tile {
+  padding: 14px;
+  border: 1px solid rgba(224, 179, 67, 0.4);
+  background: rgba(21, 19, 30, 0.85);
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(214, 43, 43, 0.2);
+}
+
+.accent-tile strong {
+  display: block;
+  color: var(--soviet-text-strong);
+  margin-bottom: 6px;
+  letter-spacing: 0.06em;
+}
+
+.muted {
+  color: var(--soviet-muted);
+}

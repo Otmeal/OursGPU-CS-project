@@ -14,7 +14,7 @@ export default defineNuxtConfig({
 
   modules: ['@pinia/nuxt'],
   // Include Vuetify styles globally
-  css: ['vuetify/styles'],
+  css: ['vuetify/styles', '@/assets/styles/soviet.css'],
 
   build: {
     // Ensure vuetify is transpiled for SSR

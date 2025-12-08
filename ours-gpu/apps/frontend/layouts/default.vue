@@ -1,9 +1,11 @@
 <template>
-  <v-app>
-    <v-app-bar app density="comfortable">
+  <v-app class="soviet-app">
+    <v-app-bar app density="comfortable" class="soviet-app-bar" flat>
       <v-app-bar-title>
         <NuxtLink to="/" class="title-link d-flex align-center gap-2">
-          <span>OursGPU</span>
+          <div>
+            <div>OursGPU</div>
+          </div>
         </NuxtLink>
       </v-app-bar-title>
       <template #append>
@@ -11,9 +13,11 @@
       </template>
     </v-app-bar>
 
-    <v-main>
-      <v-container class="py-6">
-        <slot />
+    <v-main class="soviet-main">
+      <v-container class="py-6" fluid>
+        <div class="soviet-shell">
+          <slot />
+        </div>
       </v-container>
     </v-main>
   </v-app>
@@ -36,5 +40,8 @@ import WalletConnect from '@/components/WalletConnect.vue'
 .title-link:hover {
   color: inherit;
   text-decoration: none;
+}
+.soviet-main {
+  background: transparent;
 }
 </style>
