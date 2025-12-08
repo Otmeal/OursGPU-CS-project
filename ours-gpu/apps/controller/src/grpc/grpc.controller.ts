@@ -40,6 +40,14 @@ export class GrpcController {
     return this.grpcService.jobStream(payload);
   }
 
+  @GrpcMethod('WorkerService', 'ReportStart')
+  reportStart(payload: { jobId: string; workerId?: string; executedAt?: number }) {
+    this.logger.log(
+      `ReportStart called: jobId=${payload?.jobId} worker=${payload?.workerId}`,
+    );
+    return this.grpcService.reportStart(payload);
+  }
+
   @GrpcMethod('WorkerService', 'ReportResult')
   report(payload: {
     jobId: string;

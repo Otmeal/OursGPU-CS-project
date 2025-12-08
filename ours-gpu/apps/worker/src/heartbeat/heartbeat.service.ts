@@ -44,6 +44,11 @@ type Job = {
   startAt?: number;
   killAt?: number;
 };
+type JobStart = {
+  jobId: string;
+  workerId: string;
+  executedAt?: number;
+};
 type JobResult = {
   jobId: string;
   workerId: string;
@@ -69,6 +74,7 @@ interface WorkerGrpcClient {
     salt: string;
   }>;
   heartbeat(data: HeartbeatReq): Observable<HeartbeatReply>;
+  reportStart(data: JobStart): Observable<ReportReply>;
   reportResult(data: JobResult): Observable<ReportReply>;
   presignOutput(data: {
     jobId: string;
@@ -500,6 +506,23 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
     return nowSec >= Number(job.killAt ?? 0);
   }
 
+  private async markProcessing(jobId: string, executedAtSeconds: number) {
+    try {
+      await firstValueFrom(
+        this.svc.reportStart({
+          jobId,
+          workerId: this.id,
+          executedAt: executedAtSeconds,
+        }),
+      );
+    } catch (err: unknown) {
+      const e = err as Error;
+      this.logger.debug(
+        `ReportStart failed for job=${jobId}: ${e?.message ?? String(err)}`,
+      );
+    }
+  }
+
   private async runJob(
     job: Job,
     workDir?: string,
@@ -507,6 +530,7 @@ export class HeartbeatService implements OnModuleInit, OnModuleDestroy {
   ) {
     const start = Date.now();
     const executedAtSeconds = Math.floor(start / 1000);
+    await this.markProcessing(job.jobId, executedAtSeconds);
     try {
       if (!job.entryCommand) {
         const endSeconds = Math.floor(Date.now() / 1000);

@@ -151,6 +151,17 @@ export class WorkersService {
     this.getOrCreateStream(workerId).next(j);
     return j;
   }
+
+  async markProcessing(jobId: string, workerId?: string, executedAtSeconds?: number) {
+    const j = this.jobs.get(jobId);
+    if (j) {
+      j.status = 'PROCESSING';
+      if (workerId) j.workerId = workerId;
+      this.jobs.set(jobId, j);
+    }
+    await this.jobsSvc.markProcessing(jobId, executedAtSeconds);
+    return true;
+  }
   async report(
     jobId: string,
     ok: boolean,

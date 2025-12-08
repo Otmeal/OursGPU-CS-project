@@ -7,6 +7,7 @@ service WorkerService {
   rpc GetRegisterChallenge(RegisterChallengeReq) returns (RegisterChallengeReply);
   rpc Heartbeat(HeartbeatReq) returns (HeartbeatReply);
   rpc JobStream(SubscribeReq) returns (stream Job); // 推播：controller 主動指派
+  rpc ReportStart(JobStart) returns (ReportReply);
   rpc ReportResult(JobResult) returns (ReportReply);
   rpc PresignOutput(PresignOutputReq) returns (PresignOutputReply);
   rpc ListScheduled(SubscribeReq) returns (JobList);
@@ -47,6 +48,12 @@ message Job {
   string outputPrefix = 12;   // e.g., outputs/<jobId>/
   uint64 startAt = 13;        // unix seconds for scheduled start
   uint64 killAt = 14;         // unix seconds for force-termination
+}
+
+message JobStart {
+  string jobId = 1;
+  string workerId = 2;
+  uint64 executedAt = 3;      // unix seconds when execution began
 }
 
 message JobResult {

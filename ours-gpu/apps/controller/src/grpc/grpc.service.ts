@@ -256,6 +256,26 @@ export class GrpcService {
     return this.workerService.subscribe(id);
   }
 
+  async reportStart({
+    jobId,
+    workerId,
+    executedAt,
+  }: {
+    jobId: string;
+    workerId?: string;
+    executedAt?: number;
+  }) {
+    try {
+      await this.workerService.markProcessing(jobId, workerId, executedAt);
+      return { ok: true };
+    } catch (e) {
+      this.logger.warn(
+        `ReportStart failed: ${(e as Error).message ?? String(e)}`,
+      );
+      return { ok: false };
+    }
+  }
+
   report({
     jobId,
     success,

@@ -48,6 +48,20 @@ export class JobsService {
     });
   }
 
+  markProcessing(id: string, executedAtSeconds?: number) {
+    const executedAt =
+      executedAtSeconds !== undefined
+        ? new Date(executedAtSeconds * 1000)
+        : undefined;
+    return this.prisma.job.update({
+      where: { id },
+      data: {
+        status: JobStatus.PROCESSING,
+        ...(executedAt ? { executedAt } : {}),
+      },
+    });
+  }
+
   markResult(
     id: string,
     success: boolean,
