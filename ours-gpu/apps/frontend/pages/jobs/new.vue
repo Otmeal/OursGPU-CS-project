@@ -197,23 +197,23 @@ const scheduleValidation = computed(() => {
   return { valid: true, message: '' }
 })
 const scheduleError = computed(() => scheduleValidation.value.valid ? '' : scheduleValidation.value.message)
-const overlappingJobs = computed(() => {
+const overlappingJobs = computed<{ id: string, startSeconds: number, killSeconds: number, status?: string | null }[]>(() => {
   if (!scheduleValidation.value.valid || !selectedWorkerId.value) return []
-  const startSeconds = parseDateInputSeconds(startAtInput.value)
-  const killSeconds = parseDateInputSeconds(killAtInput.value)
-  if (!startSeconds || !killSeconds) return []
+  const startSecondsInput = parseDateInputSeconds(startAtInput.value)
+  const killSecondsInput = parseDateInputSeconds(killAtInput.value)
+  if (startSecondsInput == null || killSecondsInput == null) return []
   return allJobs.value
     .filter(j => j.workerId === selectedWorkerId.value && relevantStatuses.has(String(j.status || '').toUpperCase()))
-    .map(j => {
-      const startParsed = j.startAt ? Math.floor(Date.parse(String(j.startAt)) / 1000) : null
-      const endParsed = j.killAt ? Math.floor(Date.parse(String(j.killAt)) / 1000) : null
-      const start = Number.isFinite(startParsed) ? startParsed : null
-      const end = Number.isFinite(endParsed) ? endParsed : null
-      return { id: j.id, startSeconds: start, killSeconds: end, status: j.status }
+    .map((j) => {
+      const startParsed = j.startAt ? Math.floor(Date.parse(String(j.startAt)) / 1000) : Number.NaN
+      const endParsed = j.killAt ? Math.floor(Date.parse(String(j.killAt)) / 1000) : Number.NaN
+      if (!Number.isFinite(startParsed) || !Number.isFinite(endParsed)) return null
+      return { id: j.id, startSeconds: startParsed, killSeconds: endParsed, status: j.status ?? null }
     })
-    .filter(j => j.startSeconds != null && j.killSeconds != null && j.killSeconds > j.startSeconds)
-    .filter(j => j.startSeconds! < killSeconds && j.killSeconds! > startSeconds)
-    .sort((a, b) => (a.startSeconds ?? 0) - (b.startSeconds ?? 0))
+    .filter((j): j is { id: string, startSeconds: number, killSeconds: number, status: string | null } =>
+      !!j && j.startSeconds < killSecondsInput && j.killSeconds > startSecondsInput && j.killSeconds > j.startSeconds
+    )
+    .sort((a, b) => a.startSeconds - b.startSeconds)
 })
 
 const entryCommand = ref('node "$PAYLOAD_PATH"')
@@ -244,7 +244,7 @@ const jobsLoaded = ref(false)
 const creating = ref(false)
 const createdJobId = ref<string | null>(null)
 const jobsListLink = '/jobs'
-const createdJobLink = computed(() => createdJobId.value ? `/jobs/${encodeURIComponent(createdJobId.value)}` : null)
+const createdJobLink = computed(() => createdJobId.value ? `/jobs/${encodeURIComponent(createdJobId.value)}` : undefined)
 
 // Wallet (required to create jobs)
 const wallet = useWalletStore()

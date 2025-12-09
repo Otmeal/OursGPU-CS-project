@@ -1,0 +1,35 @@
+{
+  "name": "@ours-gpu/controller",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "nest build controller",
+    "start": "nest start controller",
+    "start:dev": "nest start controller --watch"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.13.4",
+    "@grpc/proto-loader": "^0.8.0",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^3.2.3",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/microservices": "^11.1.6",
+    "@nestjs/platform-express": "^11.0.1",
+    "@ours-gpu/shared": "workspace:*",
+    "@prisma/client": "^6.2.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "minio": "^8.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "viem": "^2.21.21"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/node": "^22.10.7",
+    "prisma": "^6.2.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.3"
+  }
+}

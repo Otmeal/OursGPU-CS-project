@@ -14,20 +14,25 @@ WORKDIR /app
 # Dependencies (full, for build)
 ############################
 FROM base AS deps
-COPY ../../ ./
-RUN pnpm install --frozen-lockfile
+COPY ../../pnpm-lock.yaml* ../../pnpm-workspace.yaml* ../../package.json* ../../nest-cli.json* ../../tsconfig.json* ../../tsconfig.build.json* ./
+COPY ../../apps/controller/package.json ./apps/controller/package.json
+COPY ../../apps/worker/package.json ./apps/worker/package.json
+COPY ../../apps/frontend/package.json ./apps/frontend/package.json
+COPY ../../libs/shared/package.json ./libs/shared/package.json
+RUN pnpm install --filter @ours-gpu/worker... --frozen-lockfile
 
 ############################
 # Build the worker
 ############################
 FROM deps AS build
+COPY ../../ ./
 RUN pnpm exec nest build worker
 
 ############################
 # Production deps only
 ############################
 FROM deps AS prod-deps
-RUN pnpm prune --prod
+RUN pnpm prune --prod --filter @ours-gpu/worker...
 
 ############################
 # Runner

@@ -1,0 +1,13 @@
+{
+  "name": "@ours-gpu/shared",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/libs/shared/src/index.js",
+  "types": "dist/libs/shared/src/index.d.ts",
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^3.2.3",
+    "reflect-metadata": "^0.2.2",
+    "viem": "^2.21.21"
+  }
+}

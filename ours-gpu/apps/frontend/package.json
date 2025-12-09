@@ -1,5 +1,5 @@
 {
-  "name": "nuxt-app",
+  "name": "@ours-gpu/frontend",
   "type": "module",
   "private": true,
   "scripts": {
@@ -9,12 +9,13 @@
     "preview": "nuxt preview"
   },
   "dependencies": {
-    "ethers": "^6.13.2",
-    "viem": "^2.21.21",
+    "@ours-gpu/shared": "workspace:*",
     "@pinia/nuxt": "^0.11.2",
     "@tanstack/vue-query": "^5.56.0",
+    "ethers": "^6.13.2",
     "nuxt": "^4.1.1",
     "pinia": "^3.0.3",
+    "viem": "^2.21.21",
     "vue": "^3.5.21",
     "vue-router": "^4.5.1",
     "vuetify": "^3.7.0"
