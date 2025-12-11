@@ -18,9 +18,13 @@
       "compilerOptions": {
         "tsConfigPath": "apps/controller/tsconfig.app.json",
         "assets": [
-          { "include": "../../libs/shared/proto/**/*.proto", "outDir": "../../dist/libs/shared/proto" }
+          {
+            "include": "../../libs/shared/proto/**/*.proto",
+            "outDir": "../../dist/libs/shared/proto"
+          }
         ],
-        "watchAssets": true
+        "watchAssets": true,
+        "webpackConfigPath": "apps/controller/webpack.config.js"
       }
     },
     "shared": {
@@ -40,9 +44,13 @@
       "compilerOptions": {
         "tsConfigPath": "apps/worker/tsconfig.app.json",
         "assets": [
-          { "include": "../../libs/shared/proto/**/*.proto", "outDir": "../../dist/libs/shared/proto" }
+          {
+            "include": "../../libs/shared/proto/**/*.proto",
+            "outDir": "../../dist/libs/shared/proto"
+          }
         ],
-        "watchAssets": true
+        "watchAssets": true,
+        "webpackConfigPath": "apps/worker/webpack.config.js"
       }
     }
   }

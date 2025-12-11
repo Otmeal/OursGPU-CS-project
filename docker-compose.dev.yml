@@ -75,9 +75,9 @@ services:
     # 確保依賴已安裝後再啟動（初次掛載空的 node_modules volume 時很重要）
     command: >
       sh -lc "pnpm install --filter @ours-gpu/controller... \
-      && (pnpm --filter @ours-gpu/controller prisma migrate deploy || pnpm --filter @ours-gpu/controller prisma db push) \
-      && pnpm --filter @ours-gpu/controller prisma generate \
-      && pnpm --filter @ours-gpu/controller exec nest start controller --watch"
+      && (pnpm --filter @ours-gpu/controller exec prisma migrate deploy --schema ../../prisma/schema.prisma || pnpm --filter @ours-gpu/controller exec prisma db push --schema ../../prisma/schema.prisma) \
+      && pnpm --filter @ours-gpu/controller exec prisma generate --schema ../../prisma/schema.prisma \
+      && pnpm exec nest start controller --watch"
     environment:
       NODE_ENV: development
       # controller 自己跑 gRPC 在 0.0.0.0:50051；workers 透過服務名連（controller1）
@@ -147,7 +147,7 @@ services:
       - worker1_node_modules:/app/node_modules
     command: >
       sh -lc "pnpm install --filter @ours-gpu/worker... \
-      && pnpm --filter @ours-gpu/worker exec nest start worker --watch"
+      && pnpm exec nest start worker --watch -c nest-cli.json -p apps/worker/tsconfig.app.json"
     environment:
       NODE_ENV: development
       # 用服務名連 controller1：compose 裡服務名即 DNS
@@ -185,7 +185,7 @@ services:
       - worker2_node_modules:/app/node_modules
     command: >
       sh -lc "pnpm install --filter @ours-gpu/worker... \
-      && pnpm --filter @ours-gpu/worker exec nest start worker --watch"
+      && pnpm exec nest start worker --watch -c nest-cli.json -p apps/worker/tsconfig.app.json"
     environment:
       NODE_ENV: development
       CONTROLLER_GRPC: controller1:50051
@@ -222,7 +222,7 @@ services:
       - worker3_node_modules:/app/node_modules
     command: >
       sh -lc "pnpm install --filter @ours-gpu/worker... \
-      && pnpm --filter @ours-gpu/worker exec nest start worker --watch"
+      && pnpm exec nest start worker --watch -c nest-cli.json -p apps/worker/tsconfig.app.json"
     environment:
       NODE_ENV: development
       CONTROLLER_GRPC: controller1:50051

@@ -14,8 +14,8 @@ WORKDIR /app
 
 # 盡可能利用快取：先複製 lockfiles / 工作區設定
 # 沒有的檔案可忽略；有什麼就複製什麼（保持快取命中）
-COPY ../../pnpm-lock.yaml* ../../pnpm-workspace.yaml* ../../package.json* ../../nest-cli.json* ./
-COPY ../../tsconfig.json* ../../tsconfig.build.json* ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json nest-cli.json ./
+COPY tsconfig.json tsconfig.build.json ./
 
 # 這一步只裝依賴，不複製原始碼（原始碼以 volume 綁定進來）
 # RUN pnpm install --frozen-lockfile || pnpm install

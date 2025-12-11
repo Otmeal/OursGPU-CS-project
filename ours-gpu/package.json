@@ -22,7 +22,9 @@
     "deps:frontend:ci": "pnpm install --filter @ours-gpu/frontend... --frozen-lockfile",
     "abi:sync": "bash ../scripts/sync-abi.sh"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@prisma/client": "6.15.0"
+  },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",

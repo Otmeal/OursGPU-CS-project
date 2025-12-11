@@ -23,7 +23,7 @@ COPY ../../libs/shared/package.json ./libs/shared/package.json
 COPY ../../prisma ./prisma
 # 安裝 controller 及其依賴（含 dev，用於 build）；Prisma 生成以顯式指令執行
 RUN pnpm install --filter @ours-gpu/controller... --frozen-lockfile \
-  && pnpm --filter @ours-gpu/controller prisma generate
+  && pnpm --filter @ours-gpu/controller exec prisma generate --schema ../../prisma/schema.prisma
 
 ############################
 # Build the controller
